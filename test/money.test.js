@@ -17,6 +17,7 @@ describe("dollarsToCents", () => {
   test("handles negatives and parentheses", () => {
     expect(dollarsToCents("-10.00")).toBe(-1000);
     expect(dollarsToCents("(10.00)")).toBe(-1000);
+    expect(dollarsToCents("9.99-")).toBe(-999);
   });
 
   test("empty and invalid become 0", () => {

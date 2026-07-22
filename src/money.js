@@ -4,13 +4,29 @@ export function dollarsToCents(value) {
   if (typeof value === "number") {
     return Math.round(value * 100);
   }
-  const s = String(value ?? "")
+  let s = String(value ?? "")
     .trim()
     .replace(/[$,\s]/g, "");
   if (!s) return 0;
-  const neg = s.startsWith("-") || s.startsWith("(");
-  const cleaned = s.replace(/^[-(]/, "").replace(/\)$/, "");
-  const n = Number.parseFloat(cleaned);
+
+  let neg = false;
+  if (/[-]$/.test(s)) {
+    neg = true;
+    s = s.slice(0, -1);
+  } else if (/[+]$/.test(s)) {
+    s = s.slice(0, -1);
+  }
+  if (/^\(.*\)$/.test(s)) {
+    neg = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith("+")) s = s.slice(1);
+  if (s.startsWith("-")) {
+    neg = !neg;
+    s = s.slice(1);
+  }
+
+  const n = Number.parseFloat(s);
   if (Number.isNaN(n)) return 0;
   const cents = Math.round(Math.abs(n) * 100);
   return neg ? -cents : cents;

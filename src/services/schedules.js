@@ -1,4 +1,4 @@
-import { db } from "../db.js";
+import { db, getReady } from "../db.js";
 import { addDaysISO, todayISO } from "../money.js";
 import { addIncome, assignToEnvelope } from "./budget.js";
 import { fundGoal } from "./goals.js";
@@ -116,6 +116,12 @@ export function deleteIncomeSchedule(id) {
   db.query("DELETE FROM income_schedules WHERE id = ?").run(id);
 }
 
+export function toggleIncomeSchedule(id) {
+  db.query(
+    "UPDATE income_schedules SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?"
+  ).run(id);
+}
+
 export function listAllowanceRules() {
   return db
     .query(
@@ -175,17 +181,35 @@ export function deleteAllowanceRule(id) {
   db.query("DELETE FROM allowance_rules WHERE id = ?").run(id);
 }
 
+export function toggleAllowanceRule(id) {
+  db.query(
+    "UPDATE allowance_rules SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?"
+  ).run(id);
+}
+
+function catchUpDue(rows, today, { onPeriod, advance, onDone, maxPeriods = 500 }) {
+  let count = 0;
+  for (const row of rows) {
+    let next = row.next_date;
+    const state = {};
+    while (next <= today && count < maxPeriods) {
+      onPeriod(row, next, state);
+      next = advance(row, next);
+      count++;
+    }
+    onDone(row, next, state);
+  }
+  return count;
+}
+
 function postDueIncome(today) {
   const due = db
     .query(
       "SELECT * FROM income_schedules WHERE active = 1 AND next_date <= ?"
     )
     .all(today);
-  let count = 0;
-  for (const s of due) {
-    let next = s.next_date;
-    // Catch up all missed periods
-    while (next <= today) {
+  return catchUpDue(due, today, {
+    onPeriod(s, next) {
       addIncome({
         account_id: s.account_id,
         amount: s.amount,
@@ -193,17 +217,17 @@ function postDueIncome(today) {
         payee: s.payee || s.name,
         memo: `Scheduled: ${s.name}`,
       });
-      next = advanceDate(next, s.cadence_kind, s.cadence_interval, s.cadence_day);
-      count++;
-      // safety: don't infinite loop
-      if (count > 500) break;
-    }
-    db.query("UPDATE income_schedules SET next_date = ? WHERE id = ?").run(
-      next,
-      s.id
-    );
-  }
-  return count;
+    },
+    advance(s, next) {
+      return advanceDate(next, s.cadence_kind, s.cadence_interval, s.cadence_day);
+    },
+    onDone(s, next) {
+      db.query("UPDATE income_schedules SET next_date = ? WHERE id = ?").run(
+        next,
+        s.id
+      );
+    },
+  });
 }
 
 function postDueAllowances(today) {
@@ -212,31 +236,27 @@ function postDueAllowances(today) {
       "SELECT * FROM allowance_rules WHERE active = 1 AND next_date <= ?"
     )
     .all(today);
-  let count = 0;
-  for (const r of due) {
-    let next = r.next_date;
-    let lastShortfall = 0;
-    while (next <= today) {
-      const ready = db
-        .query("SELECT ready_to_assign FROM budget_meta WHERE id = 1")
-        .get().ready_to_assign;
+  return catchUpDue(due, today, {
+    onPeriod(r, next, state) {
+      const ready = getReady();
       const give = Math.min(r.amount, Math.max(0, ready));
-      lastShortfall = r.amount - give;
+      state.lastShortfall = r.amount - give;
       if (give > 0) {
         assignToEnvelope(r.envelope_id, give, {
           date: next,
           memo: "Allowance",
         });
       }
-      next = advanceDate(next, r.cadence_kind, r.cadence_interval, r.cadence_day);
-      count++;
-      if (count > 500) break;
-    }
-    db.query(
-      "UPDATE allowance_rules SET next_date = ?, last_shortfall = ? WHERE id = ?"
-    ).run(next, lastShortfall, r.id);
-  }
-  return count;
+    },
+    advance(r, next) {
+      return advanceDate(next, r.cadence_kind, r.cadence_interval, r.cadence_day);
+    },
+    onDone(r, next, state) {
+      db.query(
+        "UPDATE allowance_rules SET next_date = ?, last_shortfall = ? WHERE id = ?"
+      ).run(next, state.lastShortfall || 0, r.id);
+    },
+  });
 }
 
 function postDueGoalFunds(today) {
@@ -247,34 +267,29 @@ function postDueGoalFunds(today) {
          AND next_date IS NOT NULL AND next_date <= ?`
     )
     .all(today);
-  let count = 0;
-  for (const g of due) {
-    let next = g.next_date;
-    while (next <= today) {
-      try {
-        fundGoal(g.id, g.auto_amount, {
-          date: next,
-          note: "Auto-fund",
-          allowPartial: true,
-        });
-      } catch {
-        // ignore if insufficient funds
-      }
-      next = advanceDate(
+  return catchUpDue(due, today, {
+    onPeriod(g, next) {
+      fundGoal(g.id, g.auto_amount, {
+        date: next,
+        note: "Auto-fund",
+        allowPartial: true,
+      });
+    },
+    advance(g, next) {
+      return advanceDate(
         next,
         g.cadence_kind || "monthly",
         g.cadence_interval || 1,
         g.cadence_day
       );
-      count++;
-      if (count > 500) break;
-    }
-    db.query("UPDATE goals SET next_date = ? WHERE id = ?").run(next, g.id);
-  }
-  return count;
+    },
+    onDone(g, next) {
+      db.query("UPDATE goals SET next_date = ? WHERE id = ?").run(next, g.id);
+    },
+  });
 }
 
-/** Apply all due schedules. Called on each request. */
+/** Apply all due schedules. */
 export function tick(now = todayISO()) {
   const income = postDueIncome(now);
   const allowances = postDueAllowances(now);

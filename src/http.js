@@ -1,4 +1,5 @@
 import { join } from "path";
+import { todayISO } from "./money.js";
 
 export function redirect(location, flash) {
   const headers = new Headers({ Location: location });
@@ -43,13 +44,12 @@ export async function parseBody(req) {
     const files = [];
     for (const [key, value] of form.entries()) {
       if (value instanceof File) {
-        // Skip empty file inputs
         if (value.size > 0 || value.name) files.push(value);
       } else {
         data[key] = value;
       }
     }
-    return { data, file: files[0] || null, files };
+    return { data, files };
   }
   if (
     ct.includes("application/x-www-form-urlencoded") ||
@@ -66,11 +66,24 @@ export async function parseBody(req) {
     if (form && typeof form.get === "function") {
       const data = {};
       for (const [key, value] of form.entries()) data[key] = value;
-      return { data, file: null, files: [] };
+      return { data, files: [] };
     }
-    return { data: form || {}, file: null, files: [] };
+    return { data: form || {}, files: [] };
   }
-  return { data: {}, file: null, files: [] };
+  return { data: {}, files: [] };
+}
+
+/** Parse shared cadence fields from HTML form data. */
+export function parseCadenceFields(data) {
+  return {
+    cadence_kind: data.cadence_kind,
+    cadence_interval: Number(data.cadence_interval || 1),
+    cadence_day:
+      data.cadence_day !== "" && data.cadence_day != null
+        ? Number(data.cadence_day)
+        : null,
+    next_date: data.next_date || todayISO(),
+  };
 }
 
 export function publicFile(urlPath) {

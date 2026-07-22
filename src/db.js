@@ -119,6 +119,14 @@ export function migrate() {
       skipped INTEGER NOT NULL DEFAULT 0,
       account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_txn_date_id ON transactions(date DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_txn_account_date ON transactions(account_id, date DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_txn_envelope ON transactions(envelope_id);
+    CREATE INDEX IF NOT EXISTS idx_txn_uncategorized ON transactions(kind, envelope_id);
+    CREATE INDEX IF NOT EXISTS idx_income_due ON income_schedules(active, next_date);
+    CREATE INDEX IF NOT EXISTS idx_allowance_due ON allowance_rules(active, next_date);
+    CREATE INDEX IF NOT EXISTS idx_goals_autofund ON goals(active, next_date);
   `);
 
   const meta = db.query("SELECT id FROM budget_meta WHERE id = 1").get();

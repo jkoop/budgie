@@ -16,7 +16,6 @@ import {
   categorizeTransaction,
   listTransactions,
 } from "../src/services/budget.js";
-import { updateAccount } from "../src/services/budget.js";
 
 describe("parseOfx", () => {
   test("parses SGML with same-line amounts", () => {
@@ -117,24 +116,11 @@ describe("importOfxFile", () => {
         { fitid: "S1", amount: 2500, date: "2026-07-01", payee: "In" },
       ],
     });
-    const result = importOfxFile("s.ofx", text, null);
+    const result = importOfxFile("s.ofx", text);
     expect(result.account.name).toBe("Savings");
     expect(result.added).toBe(1);
     expect(accountByName("Savings").balance).toBe(2500);
     expect(getReady()).toBe(2500);
-  });
-
-  test("rejects account mismatch", () => {
-    setOfxIds({ Checking: "111", Savings: "222" });
-    const text = ofxFile({
-      accountId: "111",
-      transactions: [
-        { fitid: "C1", amount: -100, date: "2026-07-01", payee: "X" },
-      ],
-    });
-    expect(() =>
-      importOfxFile("c.ofx", text, accountByName("Savings").id)
-    ).toThrow(/linked to 222/);
   });
 
   test("rejects unknown OFX id on auto-match", () => {
@@ -145,9 +131,7 @@ describe("importOfxFile", () => {
         { fitid: "X1", amount: -100, date: "2026-07-01", payee: "X" },
       ],
     });
-    expect(() => importOfxFile("x.ofx", text, null)).toThrow(
-      /No account linked/
-    );
+    expect(() => importOfxFile("x.ofx", text)).toThrow(/No account linked/);
   });
 
   test("dedupes on re-import", () => {
@@ -158,8 +142,8 @@ describe("importOfxFile", () => {
         { fitid: "D1", amount: -500, date: "2026-07-01", payee: "Shop" },
       ],
     });
-    expect(importOfxFile("a.ofx", text, null).added).toBe(1);
-    const again = importOfxFile("a.ofx", text, null);
+    expect(importOfxFile("a.ofx", text).added).toBe(1);
+    const again = importOfxFile("a.ofx", text);
     expect(again.added).toBe(0);
     expect(again.skipped).toBe(1);
   });
@@ -173,7 +157,7 @@ describe("importOfxFile", () => {
         { fitid: "E1", amount: -2500, date: "2026-07-02", payee: "Shop" },
       ],
     });
-    importOfxFile("mix.ofx", text, null);
+    importOfxFile("mix.ofx", text);
     expect(getReady()).toBe(10000);
     const uncat = listTransactions({ uncategorized: true });
     expect(uncat).toHaveLength(1);
@@ -201,7 +185,7 @@ describe("importOfxFile", () => {
         },
       ],
     });
-    const result = importOfxFile("xfer.ofx", text, null);
+    const result = importOfxFile("xfer.ofx", text);
     expect(result.transfers).toBe(1);
     expect(result.added).toBe(2);
     expect(getReady()).toBe(0);
@@ -230,7 +214,7 @@ describe("importOfxFile", () => {
         },
       ],
     });
-    importOfxFile("out.ofx", out, null);
+    importOfxFile("out.ofx", out);
 
     const inn = ofxFile({
       accountId: "3038552770",
@@ -244,7 +228,7 @@ describe("importOfxFile", () => {
         },
       ],
     });
-    const result = importOfxFile("in.ofx", inn, null);
+    const result = importOfxFile("in.ofx", inn);
     expect(result.transfers).toBe(1);
     expect(accountByName("Checking").balance).toBe(-50000);
     expect(accountByName("Savings").balance).toBe(50000);
@@ -258,20 +242,6 @@ describe("importOfxFile", () => {
     expect(legs.map((l) => l.import_fitid)).toEqual(["OUT1", "IN1"]);
   });
 
-  test("binds OFX id when importing into account that has none yet", () => {
-    // Checking has no ofx id after reset
-    updateAccount(accountByName("Checking").id, { ofx_account_id: null });
-    updateAccount(accountByName("Savings").id, { ofx_account_id: "222" });
-    const text = ofxFile({
-      accountId: "555",
-      transactions: [
-        { fitid: "B1", amount: 100, date: "2026-07-01", payee: "X" },
-      ],
-    });
-    importOfxFile("bind.ofx", text, accountByName("Checking").id);
-    expect(accountByName("Checking").ofx_account_id).toBe("555");
-  });
-
   test("categorize after import", () => {
     setOfxIds({ Checking: "111" });
     const text = ofxFile({
@@ -280,7 +250,7 @@ describe("importOfxFile", () => {
         { fitid: "C1", amount: -4000, date: "2026-07-01", payee: "Store" },
       ],
     });
-    importOfxFile("e.ofx", text, null);
+    importOfxFile("e.ofx", text);
     const txn = listTransactions({ uncategorized: true })[0];
     categorizeTransaction(txn.id, envelopeByName("Groceries").id);
     expect(envelopeByName("Groceries").balance).toBe(-4000);

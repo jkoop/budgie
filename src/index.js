@@ -1,6 +1,13 @@
 import { migrate } from "./db.js";
 import { dollarsToCents, todayISO } from "./money.js";
-import { html, parseBody, publicFile, readFlash, redirect } from "./http.js";
+import {
+  html,
+  parseBody,
+  parseCadenceFields,
+  publicFile,
+  readFlash,
+  redirect,
+} from "./http.js";
 import * as budget from "./services/budget.js";
 import * as schedules from "./services/schedules.js";
 import * as goals from "./services/goals.js";
@@ -21,26 +28,33 @@ migrate();
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
+const TICK_MIN_INTERVAL_MS = 2000;
+let lastTickAt = 0;
 
 async function handle(req) {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method.toUpperCase();
 
-  // Tick schedules on every request
-  try {
-    schedules.tick(todayISO());
-  } catch (err) {
-    console.error("schedule tick failed:", err);
-  }
-
-  // Static
   if (method === "GET" && path.startsWith("/public/")) {
     const filePath = publicFile(path);
     if (!filePath) return new Response("Not found", { status: 404 });
     const file = Bun.file(filePath);
     if (!(await file.exists())) return new Response("Not found", { status: 404 });
     return new Response(file);
+  }
+
+  // Skip HTMX ledger chunks; debounce rapid full-page hits.
+  if (path !== "/ledger/rows") {
+    const now = Date.now();
+    if (now - lastTickAt >= TICK_MIN_INTERVAL_MS) {
+      lastTickAt = now;
+      try {
+        schedules.tick(todayISO());
+      } catch (err) {
+        console.error("schedule tick failed:", err);
+      }
+    }
   }
 
   const { flash, clearHeader } = readFlash(req);
@@ -176,7 +190,7 @@ async function handle(req) {
 
     // ——— POST actions ———
     if (method === "POST") {
-      const { data, file, files } = await parseBody(req);
+      const { data, files } = await parseBody(req);
 
       // Envelopes
       if (path === "/envelopes") {
@@ -298,6 +312,7 @@ async function handle(req) {
       // Goals
       if (path === "/goals") {
         const auto = data.auto_amount ? dollarsToCents(data.auto_amount) : null;
+        const cadence = auto ? parseCadenceFields(data) : {};
         goals.createGoal({
           name: data.name,
           target_amount: dollarsToCents(data.target_amount),
@@ -306,13 +321,10 @@ async function handle(req) {
             ? Number(data.source_envelope_id)
             : null,
           auto_amount: auto,
-          cadence_kind: auto ? data.cadence_kind : null,
-          cadence_interval: auto ? Number(data.cadence_interval || 1) : null,
-          cadence_day:
-            auto && data.cadence_day !== ""
-              ? Number(data.cadence_day)
-              : null,
-          next_date: auto ? data.next_date || todayISO() : null,
+          cadence_kind: auto ? cadence.cadence_kind : null,
+          cadence_interval: auto ? cadence.cadence_interval : null,
+          cadence_day: auto ? cadence.cadence_day : null,
+          next_date: auto ? cadence.next_date : null,
         });
         return redirect("/goals", {
           type: "success",
@@ -345,13 +357,7 @@ async function handle(req) {
           amount: dollarsToCents(data.amount),
           account_id: Number(data.account_id),
           payee: data.payee || data.name,
-          cadence_kind: data.cadence_kind,
-          cadence_interval: Number(data.cadence_interval || 1),
-          cadence_day:
-            data.cadence_day !== "" && data.cadence_day != null
-              ? Number(data.cadence_day)
-              : null,
-          next_date: data.next_date || todayISO(),
+          ...parseCadenceFields(data),
         });
         return redirect("/schedules", {
           type: "success",
@@ -363,13 +369,7 @@ async function handle(req) {
         schedules.createAllowanceRule({
           envelope_id: Number(data.envelope_id),
           amount: dollarsToCents(data.amount),
-          cadence_kind: data.cadence_kind,
-          cadence_interval: Number(data.cadence_interval || 1),
-          cadence_day:
-            data.cadence_day !== "" && data.cadence_day != null
-              ? Number(data.cadence_day)
-              : null,
-          next_date: data.next_date || todayISO(),
+          ...parseCadenceFields(data),
         });
         return redirect("/schedules", {
           type: "success",
@@ -379,10 +379,7 @@ async function handle(req) {
 
       const incToggle = path.match(/^\/schedules\/income\/(\d+)\/toggle$/);
       if (incToggle) {
-        const row = schedules
-          .listIncomeSchedules()
-          .find((s) => s.id === Number(incToggle[1]));
-        if (row) schedules.updateIncomeSchedule(row.id, { active: !row.active });
+        schedules.toggleIncomeSchedule(Number(incToggle[1]));
         return redirect("/schedules");
       }
 
@@ -397,10 +394,7 @@ async function handle(req) {
 
       const allToggle = path.match(/^\/schedules\/allowance\/(\d+)\/toggle$/);
       if (allToggle) {
-        const row = schedules
-          .listAllowanceRules()
-          .find((r) => r.id === Number(allToggle[1]));
-        if (row) schedules.updateAllowanceRule(row.id, { active: !row.active });
+        schedules.toggleAllowanceRule(Number(allToggle[1]));
         return redirect("/schedules");
       }
 
@@ -415,9 +409,7 @@ async function handle(req) {
 
       // Import (one or more QFX/OFX files; account auto-matched per file)
       if (path === "/import") {
-        const uploads = (files && files.length ? files : file ? [file] : []).filter(
-          (f) => f && (f.size > 0 || f.name)
-        );
+        const uploads = (files || []).filter((f) => f && (f.size > 0 || f.name));
         if (!uploads.length) throw new Error("No file uploaded");
 
         const results = [];
@@ -426,8 +418,7 @@ async function handle(req) {
           const name = upload.name || "upload.ofx";
           try {
             const text = await upload.text();
-            const result = importOfxFile(name, text, null);
-            results.push(result);
+            results.push(importOfxFile(name, text));
           } catch (err) {
             failures.push({ name, message: err.message || String(err) });
           }

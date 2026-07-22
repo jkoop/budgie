@@ -13,6 +13,57 @@ function progressBar(funded, target) {
     <div class="muted" style="font-size:0.8rem">${pct}% · ${formatMoney(funded)} of ${formatMoney(target)}</div>`;
 }
 
+function goalEnvelopeSummary(e) {
+  return `<div style="margin-bottom:0.75rem">
+    <strong>${escapeHtml(e.name)}</strong> <span class="pill">envelope</span>
+    ${progressBar(e.balance, e.target_amount)}
+  </div>`;
+}
+
+function standaloneGoalSummary(g) {
+  return `<div style="margin-bottom:0.75rem">
+    <strong>${escapeHtml(g.name)}</strong> <span class="pill">standalone</span>
+    ${progressBar(g.funded, g.target_amount)}
+  </div>`;
+}
+
+function goalEnvelopeTableRow(e) {
+  return `<tr>
+    <td><strong>${escapeHtml(e.name)}</strong> <span class="pill">envelope</span>
+      <div class="muted">${escapeHtml(e.group_name || "")}${e.target_date ? ` · by ${escapeHtml(e.target_date)}` : ""}</div>
+      ${progressBar(e.balance, e.target_amount)}
+    </td>
+    <td class="num">${moneySpan(e.balance)}</td>
+    <td class="num">${moneySpan(e.target_amount)}</td>
+    <td><a href="/envelopes">Manage in Envelopes →</a></td>
+  </tr>`;
+}
+
+function standaloneGoalTableRow(g) {
+  const remaining = Math.max(0, g.target_amount - g.funded);
+  return `<tr>
+    <td>
+      <strong>${escapeHtml(g.name)}</strong> <span class="pill">standalone</span>
+      <div class="muted">Source: ${escapeHtml(g.source_envelope_name || "Ready to Assign")}
+        ${g.target_date ? ` · by ${escapeHtml(g.target_date)}` : ""}
+        ${g.auto_amount ? ` · auto ${formatMoney(g.auto_amount)} ${escapeHtml(g.cadence_kind || "")}` : ""}
+      </div>
+      ${progressBar(g.funded, g.target_amount)}
+    </td>
+    <td class="num">${moneySpan(g.funded)}</td>
+    <td class="num">${moneySpan(g.target_amount)}</td>
+    <td>
+      <form method="post" action="/goals/${g.id}/fund" class="actions">
+        <input name="amount" placeholder="${(remaining / 100).toFixed(2)}" required style="width:5.5rem" />
+        <button type="submit">Fund</button>
+      </form>
+      <form method="post" action="/goals/${g.id}/delete" onsubmit="return confirm('Delete goal?')" style="margin-top:0.35rem">
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </td>
+  </tr>`;
+}
+
 export function dashboardPage({
   ready,
   accountTotal,
@@ -74,24 +125,8 @@ export function dashboardPage({
   const goalsHtml = `
     <div class="panel">
       <h3>Goals</h3>
-      ${(goalEnvelopes || [])
-        .map(
-          (e) =>
-            `<div style="margin-bottom:0.75rem">
-              <strong>${escapeHtml(e.name)}</strong> <span class="pill">envelope</span>
-              ${progressBar(e.balance, e.target_amount)}
-            </div>`
-        )
-        .join("")}
-      ${(goals || [])
-        .map(
-          (g) =>
-            `<div style="margin-bottom:0.75rem">
-              <strong>${escapeHtml(g.name)}</strong> <span class="pill">standalone</span>
-              ${progressBar(g.funded, g.target_amount)}
-            </div>`
-        )
-        .join("")}
+      ${(goalEnvelopes || []).map(goalEnvelopeSummary).join("")}
+      ${(goals || []).map(standaloneGoalSummary).join("")}
       ${!goalEnvelopes?.length && !goals?.length ? '<p class="muted">No goals yet</p>' : ""}
     </div>`;
 
@@ -289,13 +324,13 @@ function ledgerFilterQuery(filters) {
   return s ? `&${s}` : "";
 }
 
-export function transactionRowsHtml(transactions, envelopes) {
+export function transactionRowsHtml(transactions, envelopeOptionsHtml = "") {
   return transactions
     .map((t) => {
       const needsCat = t.kind === "expense" && !t.envelope_id;
       const cat = needsCat
         ? `<form method="post" action="/ledger/${t.id}/categorize" class="actions">
-             <select name="envelope_id" required>${selectOptions(envelopes, null, { empty: "Categorize…" })}</select>
+             <select name="envelope_id" required>${envelopeOptionsHtml}</select>
              <button type="submit">Save</button>
            </form>`
         : escapeHtml(
@@ -327,22 +362,25 @@ export function ledgerRowsPartial({
   offset,
   hasMore,
 }) {
-  const rows = transactionRowsHtml(transactions, envelopes);
+  const envelopeOptionsHtml = selectOptions(envelopes, null, {
+    empty: "Categorize…",
+  });
+  const rows = transactionRowsHtml(transactions, envelopeOptionsHtml);
   if (!rows && offset === 0) {
     return `<tr><td colspan="6" class="muted">No transactions</td></tr>`;
   }
-  let html = rows;
+  let htmlOut = rows;
   if (hasMore) {
     const next = offset + transactions.length;
     const q = ledgerFilterQuery(filters);
-    html += `<tr class="load-more"
+    htmlOut += `<tr class="load-more"
       hx-get="/ledger/rows?offset=${next}${q}"
       hx-trigger="intersect once"
       hx-swap="outerHTML">
       <td colspan="6" class="muted">Loading more…</td>
     </tr>`;
   }
-  return html;
+  return htmlOut;
 }
 
 export function ledgerPage({ accounts, envelopes, filters, flash }) {
@@ -385,46 +423,8 @@ export function ledgerPage({ accounts, envelopes, filters, flash }) {
 }
 
 export function goalsPage({ goals, goalEnvelopes, envelopes, flash }) {
-  const envGoals = goalEnvelopes
-    .map(
-      (e) => `<tr>
-      <td><strong>${escapeHtml(e.name)}</strong> <span class="pill">envelope</span>
-        <div class="muted">${escapeHtml(e.group_name || "")}${e.target_date ? ` · by ${escapeHtml(e.target_date)}` : ""}</div>
-        ${progressBar(e.balance, e.target_amount)}
-      </td>
-      <td class="num">${moneySpan(e.balance)}</td>
-      <td class="num">${moneySpan(e.target_amount)}</td>
-      <td><a href="/envelopes">Manage in Envelopes →</a></td>
-    </tr>`
-    )
-    .join("");
-
-  const standalone = goals
-    .map((g) => {
-      const remaining = Math.max(0, g.target_amount - g.funded);
-      return `<tr>
-      <td>
-        <strong>${escapeHtml(g.name)}</strong> <span class="pill">standalone</span>
-        <div class="muted">Source: ${escapeHtml(g.source_envelope_name || "Ready to Assign")}
-          ${g.target_date ? ` · by ${escapeHtml(g.target_date)}` : ""}
-          ${g.auto_amount ? ` · auto ${formatMoney(g.auto_amount)} ${escapeHtml(g.cadence_kind || "")}` : ""}
-        </div>
-        ${progressBar(g.funded, g.target_amount)}
-      </td>
-      <td class="num">${moneySpan(g.funded)}</td>
-      <td class="num">${moneySpan(g.target_amount)}</td>
-      <td>
-        <form method="post" action="/goals/${g.id}/fund" class="actions">
-          <input name="amount" placeholder="${(remaining / 100).toFixed(2)}" required style="width:5.5rem" />
-          <button type="submit">Fund</button>
-        </form>
-        <form method="post" action="/goals/${g.id}/delete" onsubmit="return confirm('Delete goal?')" style="margin-top:0.35rem">
-          <button type="submit" class="danger">Delete</button>
-        </form>
-      </td>
-    </tr>`;
-    })
-    .join("");
+  const envGoals = goalEnvelopes.map(goalEnvelopeTableRow).join("");
+  const standalone = goals.map(standaloneGoalTableRow).join("");
 
   const body = `
     <h1>Goals</h1>

@@ -1,12 +1,6 @@
-import { db, adjustReady } from "../db.js";
+import { db, adjustReady, getReady } from "../db.js";
 import { todayISO } from "../money.js";
-
-function bumpEnvelope(envelopeId, delta) {
-  db.query("UPDATE envelopes SET balance = balance + ? WHERE id = ?").run(
-    delta,
-    envelopeId
-  );
-}
+import { bumpEnvelope } from "./budget.js";
 
 export function listGoals({ includeInactive = false } = {}) {
   if (includeInactive) {
@@ -28,17 +22,6 @@ export function listGoals({ includeInactive = false } = {}) {
        ORDER BY g.target_date, g.name`
     )
     .all();
-}
-
-export function getGoal(id) {
-  return db
-    .query(
-      `SELECT g.*, e.name AS source_envelope_name
-       FROM goals g
-       LEFT JOIN envelopes e ON e.id = g.source_envelope_id
-       WHERE g.id = ?`
-    )
-    .get(id);
 }
 
 export function createGoal({
@@ -70,32 +53,6 @@ export function createGoal({
       cadence_day,
       next_date || null
     ).lastInsertRowid;
-}
-
-export function updateGoal(id, fields) {
-  const row = db.query("SELECT * FROM goals WHERE id = ?").get(id);
-  if (!row) throw new Error("Goal not found");
-  db.query(
-    `UPDATE goals SET
-      name = ?, target_amount = ?, target_date = ?, source_envelope_id = ?,
-      auto_amount = ?, cadence_kind = ?, cadence_interval = ?, cadence_day = ?,
-      next_date = ?, active = ?
-     WHERE id = ?`
-  ).run(
-    fields.name ?? row.name,
-    fields.target_amount ?? row.target_amount,
-    fields.target_date !== undefined ? fields.target_date || null : row.target_date,
-    fields.source_envelope_id !== undefined
-      ? fields.source_envelope_id || null
-      : row.source_envelope_id,
-    fields.auto_amount !== undefined ? fields.auto_amount : row.auto_amount,
-    fields.cadence_kind !== undefined ? fields.cadence_kind : row.cadence_kind,
-    fields.cadence_interval ?? row.cadence_interval,
-    fields.cadence_day !== undefined ? fields.cadence_day : row.cadence_day,
-    fields.next_date !== undefined ? fields.next_date || null : row.next_date,
-    fields.active !== undefined ? (fields.active ? 1 : 0) : row.active,
-    id
-  );
 }
 
 export function deleteGoal(id) {
@@ -131,9 +88,7 @@ export function fundGoal(
     }
     bumpEnvelope(goal.source_envelope_id, -give);
   } else {
-    const ready = db
-      .query("SELECT ready_to_assign FROM budget_meta WHERE id = 1")
-      .get().ready_to_assign;
+    const ready = getReady();
     if (ready < give) {
       if (!allowPartial || ready <= 0) {
         if (allowPartial) return 0;

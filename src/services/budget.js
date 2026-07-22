@@ -8,7 +8,7 @@ function bumpAccount(accountId, delta) {
   );
 }
 
-function bumpEnvelope(envelopeId, delta) {
+export function bumpEnvelope(envelopeId, delta) {
   db.query("UPDATE envelopes SET balance = balance + ? WHERE id = ?").run(
     delta,
     envelopeId
@@ -320,8 +320,14 @@ function findOpenTransferLeg(accountId, amount, date, otherAccountId) {
 /**
  * Detect a counterparty OFX account id in payee/memo text.
  * Matches Tangerine-style: "Completed transfer to … account 3038552770"
+ * @param {string[]|null} linkedOfxIds optional cache of known OFX account ids
  */
-export function detectTransferCounterparty(payee, memo, trntype = null) {
+export function detectTransferCounterparty(
+  payee,
+  memo,
+  trntype = null,
+  linkedOfxIds = null
+) {
   const text = `${payee || ""} ${memo || ""}`;
   const looksLikeTransfer =
     /transfer|internet\s+withdrawal|internet\s+deposit|withdrawal\s+to|deposit\s+from|\bxfer\b/i.test(
@@ -333,14 +339,15 @@ export function detectTransferCounterparty(payee, memo, trntype = null) {
   const accountMatch = text.match(/account\s+(\d{4,})/i);
   if (accountMatch) return accountMatch[1];
 
-  // Fallback: any linked OFX id appearing in the text
-  const linked = db
-    .query(
-      "SELECT ofx_account_id FROM accounts WHERE ofx_account_id IS NOT NULL AND ofx_account_id != ''"
-    )
-    .all();
-  for (const row of linked) {
-    const id = String(row.ofx_account_id);
+  const linked =
+    linkedOfxIds ||
+    db
+      .query(
+        "SELECT ofx_account_id FROM accounts WHERE ofx_account_id IS NOT NULL AND ofx_account_id != ''"
+      )
+      .all()
+      .map((row) => String(row.ofx_account_id));
+  for (const id of linked) {
     if (id && text.includes(id)) return id;
   }
   return null;
@@ -400,6 +407,7 @@ export function importBankTxn({
   fitid,
   import_id,
   trntype = null,
+  linkedOfxIds = null,
 }) {
   const existing = db
     .query(
@@ -409,7 +417,12 @@ export function importBankTxn({
   if (existing) return { skipped: true, transfer: false };
   if (!amount) return { skipped: true, transfer: false };
 
-  const counterpartyOfx = detectTransferCounterparty(payee, memo, trntype);
+  const counterpartyOfx = detectTransferCounterparty(
+    payee,
+    memo,
+    trntype,
+    linkedOfxIds
+  );
   if (counterpartyOfx) {
     const other = findAccountByOfxId(counterpartyOfx);
     if (other && other.id !== account_id) {
@@ -558,16 +571,20 @@ export function deleteTransaction(id) {
 
 export function dashboardStats() {
   const ready = getReady();
-  const accounts = listAccounts();
-  const accountTotal = accounts.reduce((s, a) => s + a.balance, 0);
-  const envelopes = listEnvelopes();
-  const envelopeTotal = envelopes.reduce((s, e) => s + e.balance, 0);
+  const accountTotal = db
+    .query("SELECT COALESCE(SUM(balance), 0) AS s FROM accounts WHERE archived = 0")
+    .get().s;
+  const envelopeTotal = db
+    .query(
+      "SELECT COALESCE(SUM(balance), 0) AS s FROM envelopes WHERE archived = 0"
+    )
+    .get().s;
   const uncategorized = db
     .query(
       "SELECT COUNT(*) AS c FROM transactions WHERE kind = 'expense' AND envelope_id IS NULL"
     )
     .get().c;
-  return { ready, accountTotal, envelopeTotal, uncategorized, accounts, envelopes };
+  return { ready, accountTotal, envelopeTotal, uncategorized };
 }
 
 export { getReady };
