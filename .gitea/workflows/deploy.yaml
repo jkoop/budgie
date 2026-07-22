@@ -1,0 +1,25 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [master, main]
+
+jobs:
+  deploy:
+    if: ${{ gitea.event.workflow_run.conclusion == 'success' && gitea.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/catthehacker/ubuntu:act-22.04
+    steps:
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SCRIPT: ${{ secrets.DEPLOY_SCRIPT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_ed25519 "$DEPLOY_HOST" "$DEPLOY_SCRIPT"
