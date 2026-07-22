@@ -89,11 +89,6 @@ export function dashboardPage({
             ${e.target_amount ? progressBar(e.balance, e.target_amount) : ""}
           </div>
           <div class="num">${moneySpan(e.balance)}</div>
-          <form method="post" action="/envelopes/assign" class="row">
-            <input type="hidden" name="envelope_id" value="${e.id}" />
-            <input type="text" name="amount" placeholder="Assign" required />
-            <button type="submit">Assign</button>
-          </form>
         </div>`
         )
         .join("");
