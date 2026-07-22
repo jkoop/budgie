@@ -109,7 +109,7 @@ describe("detectTransferCounterparty", () => {
 
 describe("importOfxFile", () => {
   test("auto-matches account by OFX id", () => {
-    setOfxIds({ Checking: "111", Savings: "222" });
+    setOfxIds({ Chequing: "111", Savings: "222" });
     const text = ofxFile({
       accountId: "222",
       transactions: [
@@ -124,7 +124,7 @@ describe("importOfxFile", () => {
   });
 
   test("rejects unknown OFX id on auto-match", () => {
-    setOfxIds({ Checking: "111" });
+    setOfxIds({ Chequing: "111" });
     const text = ofxFile({
       accountId: "999",
       transactions: [
@@ -135,7 +135,7 @@ describe("importOfxFile", () => {
   });
 
   test("dedupes on re-import", () => {
-    setOfxIds({ Checking: "111" });
+    setOfxIds({ Chequing: "111" });
     const text = ofxFile({
       accountId: "111",
       transactions: [
@@ -149,7 +149,7 @@ describe("importOfxFile", () => {
   });
 
   test("inflows go to Ready; outflows stay uncategorized", () => {
-    setOfxIds({ Checking: "111" });
+    setOfxIds({ Chequing: "111" });
     const text = ofxFile({
       accountId: "111",
       transactions: [
@@ -165,7 +165,7 @@ describe("importOfxFile", () => {
   });
 
   test("recognizes inter-account transfers without touching Ready", () => {
-    setOfxIds({ Checking: "4016809895", Savings: "3038552770" });
+    setOfxIds({ Chequing: "4016809895", Savings: "3038552770" });
     const text = ofxFile({
       accountId: "4016809895",
       transactions: [
@@ -189,7 +189,7 @@ describe("importOfxFile", () => {
     expect(result.transfers).toBe(1);
     expect(result.added).toBe(2);
     expect(getReady()).toBe(0);
-    expect(accountByName("Checking").balance).toBe(-172500);
+    expect(accountByName("Chequing").balance).toBe(-172500);
     expect(accountByName("Savings").balance).toBe(170000);
 
     const xfer = db
@@ -201,7 +201,7 @@ describe("importOfxFile", () => {
   });
 
   test("links opposite transfer leg on second-account import", () => {
-    setOfxIds({ Checking: "4016809895", Savings: "3038552770" });
+    setOfxIds({ Chequing: "4016809895", Savings: "3038552770" });
     const out = ofxFile({
       accountId: "4016809895",
       transactions: [
@@ -230,7 +230,7 @@ describe("importOfxFile", () => {
     });
     const result = importOfxFile("in.ofx", inn);
     expect(result.transfers).toBe(1);
-    expect(accountByName("Checking").balance).toBe(-50000);
+    expect(accountByName("Chequing").balance).toBe(-50000);
     expect(accountByName("Savings").balance).toBe(50000);
     expect(getReady()).toBe(0);
 
@@ -243,7 +243,7 @@ describe("importOfxFile", () => {
   });
 
   test("categorize after import", () => {
-    setOfxIds({ Checking: "111" });
+    setOfxIds({ Chequing: "111" });
     const text = ofxFile({
       accountId: "111",
       transactions: [

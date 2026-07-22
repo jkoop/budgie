@@ -1,0 +1,50 @@
+---
+description: Use Canadian spelling in all user-facing text
+globs: src/views/**,src/index.js,src/services/**,src/db.js,src/migrations.js,README.md,AGENTS.md
+alwaysApply: false
+---
+
+# Canadian spelling
+
+All user-facing copy — page titles, labels, buttons, flash messages, help text, error strings, seed defaults, and docs — must use **Canadian English** spelling.
+
+## Common patterns
+
+| Use (Canadian) | Avoid (US) |
+|----------------|------------|
+| colour, favour, honour, behaviour, neighbour | color, favor, honor, behavior, neighbor |
+| centre, metre, litre | center, meter, liter |
+| cancelling, travelled, modelling | canceling, traveled, modeling |
+| defence, grey, cheque | defense, gray, check (payment) |
+| chequing (account), paycheque | checking (account), paycheck |
+| licence (noun), license (verb) | license for both |
+
+Canadian English keeps **-ize** (not -ise): organize, categorize, recognize, analyze, realize.
+
+## Examples
+
+```text
+✅ "Categorize this transaction."
+❌ "Categorise this transaction."
+
+✅ "Neighbourhood envelope"
+❌ "Neighborhood envelope"
+
+✅ "Cancelling import…"
+❌ "Canceling import…"
+
+✅ "Chequing" (seed account name), "paycheque" schedule placeholder
+❌ "Checking", "paycheck" — US banking/income terms; Canadian banks and canada.ca use **chequing account**
+```
+
+## Scope
+
+Apply when editing:
+
+- **Views** — `src/views/**`
+- **Flash and route messages** — `src/index.js`
+- **User-visible errors** — `src/services/**`, `src/migrations.js`
+- **Seed defaults** — envelope/account/group names in `src/db.js`
+- **Docs and agent instructions** — `README.md`, `AGENTS.md`
+
+Do **not** change code identifiers, URLs, CSS properties, HTML attributes, test assertions, or third-party/API terms (e.g. `color` in CSS, `ACCTID` in OFX).

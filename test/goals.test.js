@@ -20,7 +20,7 @@ import {
 describe("standalone goals", () => {
   test("fund from Ready", () => {
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 50000,
       date: "2026-07-01",
     });
@@ -39,7 +39,7 @@ describe("standalone goals", () => {
   test("fund from source envelope", () => {
     const savingsEnv = envelopeByName("Emergency Fund");
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 50000,
       date: "2026-07-01",
     });
@@ -57,7 +57,7 @@ describe("standalone goals", () => {
 
   test("rejects insufficient Ready unless partial", () => {
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 1000,
       date: "2026-07-01",
     });
@@ -68,7 +68,7 @@ describe("standalone goals", () => {
 
   test("delete removes goal and contributions", () => {
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 5000,
       date: "2026-07-01",
     });

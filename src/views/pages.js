@@ -571,7 +571,7 @@ export function schedulesPage({
     <div class="panel">
       <h3>New income schedule</h3>
       <form method="post" action="/schedules/income" class="stack">
-        <label>Name<input name="name" required placeholder="Paycheck" /></label>
+        <label>Name<input name="name" required placeholder="Paycheque" /></label>
         <label>Amount<input name="amount" required /></label>
         <label>Account<select name="account_id" required>${selectOptions(accounts, accounts[0]?.id)}</select></label>
         <label>Payee<input name="payee" /></label>

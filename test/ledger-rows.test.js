@@ -17,7 +17,7 @@ useCleanDb();
 
 describe("ledger HTMX chunks", () => {
   test("transactionRowsHtml renders transfer link controls for matching legs", () => {
-    const checking = accountByName("Checking");
+    const checking = accountByName("Chequing");
     const savings = accountByName("Savings");
     importBankTxn({
       account_id: checking.id,
@@ -47,7 +47,7 @@ describe("ledger HTMX chunks", () => {
 
   test("transactionRowsHtml renders categorize controls for uncategorized", () => {
     importBankTxn({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: -100,
       date: "2026-07-01",
       payee: "Shop",
@@ -64,7 +64,7 @@ describe("ledger HTMX chunks", () => {
   });
 
   test("ledgerRowsPartial builds envelope options once", () => {
-    const checking = accountByName("Checking");
+    const checking = accountByName("Chequing");
     importBankTxn({
       account_id: checking.id,
       amount: -100,
@@ -97,7 +97,7 @@ describe("ledger HTMX chunks", () => {
   });
 
   test("ledgerRowsPartial includes load-more sentinel when more remain", () => {
-    const checking = accountByName("Checking");
+    const checking = accountByName("Chequing");
     for (let i = 0; i < TXN_PAGE_SIZE + 5; i++) {
       importBankTxn({
         account_id: checking.id,
@@ -124,7 +124,7 @@ describe("ledger HTMX chunks", () => {
 
   test("ledgerRowsPartial omits sentinel on last page", () => {
     importBankTxn({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: -50,
       date: "2026-07-01",
       payee: "One",

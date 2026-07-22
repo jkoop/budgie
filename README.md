@@ -7,7 +7,7 @@ Single-user, YNAB-style envelope budgeting for localhost / LAN. Built with Bun a
 - **Ready to Assign** pool — income lands here; you assign into envelopes
 - **Full ledger** — income, expenses, transfers, categorization
 - **Envelope allowances** — periodic auto-assign on arbitrary cadences
-- **Scheduled income** — predictable paychecks (plus ad-hoc income anytime)
+- **Scheduled income** — predictable paycheques (plus ad-hoc income anytime)
 - **Goals** — goal envelopes (target on an envelope) and standalone goals with optional auto-fund
 - **QFX/OFX import** — bank file upload with FITID dedupe
 
@@ -63,7 +63,7 @@ With Docker Compose, the database path inside the container is `/data/budgie.db`
 
 ## Data
 
-SQLite file lives in `data/budgie.db` (created on first run, gitignored). Seed data includes Checking/Savings accounts and a few starter envelopes.
+SQLite file lives in `data/budgie.db` (created on first run, gitignored). Seed data includes Chequing/Savings accounts and a few starter envelopes.
 
 ## Tests
 

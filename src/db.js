@@ -44,7 +44,7 @@ function seed() {
 
   const acctCount = db.query("SELECT COUNT(*) AS c FROM accounts").get().c;
   if (acctCount === 0) {
-    db.query("INSERT INTO accounts (name, balance) VALUES (?, 0)").run("Checking");
+    db.query("INSERT INTO accounts (name, balance) VALUES (?, 0)").run("Chequing");
     db.query("INSERT INTO accounts (name, balance) VALUES (?, 0)").run("Savings");
   }
 }

@@ -39,7 +39,7 @@ describe("advanceDate", () => {
 
 describe("tick schedules", () => {
   test("posts due income and advances next_date", () => {
-    const checking = accountByName("Checking");
+    const checking = accountByName("Chequing");
     createIncomeSchedule({
       name: "Pay",
       amount: 300000,
@@ -52,7 +52,7 @@ describe("tick schedules", () => {
     const result = tick("2026-07-01");
     expect(result.income).toBe(1);
     expect(getReady()).toBe(300000);
-    expect(accountByName("Checking").balance).toBe(300000);
+    expect(accountByName("Chequing").balance).toBe(300000);
     expect(listIncomeSchedules()[0].next_date).toBe("2026-07-15");
   });
 
@@ -60,7 +60,7 @@ describe("tick schedules", () => {
     createIncomeSchedule({
       name: "Pay",
       amount: 10000,
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       cadence_kind: "weekly",
       next_date: "2026-07-01",
     });
@@ -73,7 +73,7 @@ describe("tick schedules", () => {
   test("allowance assigns from Ready with shortfall", () => {
     const groceries = envelopeByName("Groceries");
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 5000,
       date: "2026-07-01",
     });
@@ -92,7 +92,7 @@ describe("tick schedules", () => {
 
   test("auto-funds standalone goals", () => {
     addIncome({
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       amount: 20000,
       date: "2026-07-01",
     });
@@ -113,7 +113,7 @@ describe("tick schedules", () => {
     const id = createIncomeSchedule({
       name: "Off",
       amount: 1000,
-      account_id: accountByName("Checking").id,
+      account_id: accountByName("Chequing").id,
       cadence_kind: "daily",
       next_date: "2026-07-01",
     });
