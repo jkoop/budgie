@@ -9,7 +9,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: docker.io/oven/bun:1
+      image: docker.io/catthehacker/ubuntu:act-22.04
     steps:
+      - name: Checkout
+        uses: https://gitea.com/actions/checkout@v4
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
       - name: Run tests
         run: bun test
