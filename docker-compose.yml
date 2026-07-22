@@ -1,0 +1,12 @@
+services:
+  budgie:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      BUDGIE_DB: /data/budgie.db
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
