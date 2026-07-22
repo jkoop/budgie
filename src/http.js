@@ -1,6 +1,10 @@
 import { join } from "path";
 import { todayISO } from "./money.js";
 
+export function isHtmx(req) {
+  return req.headers.get("HX-Request") === "true";
+}
+
 export function redirect(location, flash) {
   const headers = new Headers({ Location: location });
   if (flash) {

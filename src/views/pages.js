@@ -30,7 +30,7 @@ function standaloneGoalSummary(g) {
 function goalEnvelopeTableRow(e) {
   return `<tr>
     <td><strong>${escapeHtml(e.name)}</strong> <span class="pill">envelope</span>
-      <div class="muted">${escapeHtml(e.group_name || "")}${e.target_date ? ` · by ${escapeHtml(e.target_date)}` : ""}</div>
+      <div class="muted">${escapeHtml(e.group_name || "")}${e.target_date ? ` · by <span class="date">${escapeHtml(e.target_date)}</span>` : ""}</div>
       ${progressBar(e.balance, e.target_amount)}
     </td>
     <td class="num">${moneySpan(e.balance)}</td>
@@ -45,7 +45,7 @@ function standaloneGoalTableRow(g) {
     <td>
       <strong>${escapeHtml(g.name)}</strong> <span class="pill">standalone</span>
       <div class="muted">Source: ${escapeHtml(g.source_envelope_name || "Ready to Assign")}
-        ${g.target_date ? ` · by ${escapeHtml(g.target_date)}` : ""}
+        ${g.target_date ? ` · by <span class="date">${escapeHtml(g.target_date)}</span>` : ""}
         ${g.auto_amount ? ` · auto ${formatMoney(g.auto_amount)} ${escapeHtml(g.cadence_kind || "")}` : ""}
       </div>
       ${progressBar(g.funded, g.target_amount)}
@@ -109,13 +109,13 @@ export function dashboardPage({
         ${upcomingIncome
           .map(
             (s) =>
-              `<li>Income <strong>${escapeHtml(s.name)}</strong> ${moneySpan(s.amount)} on ${escapeHtml(s.next_date)}</li>`
+              `<li>Income <strong>${escapeHtml(s.name)}</strong> ${moneySpan(s.amount)} on <span class="date">${escapeHtml(s.next_date)}</span></li>`
           )
           .join("")}
         ${upcomingAllowances
           .map(
             (r) =>
-              `<li>Allowance → <strong>${escapeHtml(r.envelope_name)}</strong> ${moneySpan(r.amount)} on ${escapeHtml(r.next_date)}${r.last_shortfall ? ` <span class="muted">(last shortfall ${formatMoney(r.last_shortfall)})</span>` : ""}</li>`
+              `<li>Allowance → <strong>${escapeHtml(r.envelope_name)}</strong> ${moneySpan(r.amount)} on <span class="date">${escapeHtml(r.next_date)}</span>${r.last_shortfall ? ` <span class="muted">(last shortfall ${formatMoney(r.last_shortfall)})</span>` : ""}</li>`
           )
           .join("")}
         ${!upcomingIncome.length && !upcomingAllowances.length ? "<li class='muted'>Nothing scheduled</li>" : ""}
@@ -134,12 +134,12 @@ export function dashboardPage({
     <div class="panel">
       <h3>Recent activity</h3>
       <table>
-        <thead><tr><th>Date</th><th>Payee</th><th>Envelope</th><th class="num">Amount</th></tr></thead>
+        <thead><tr><th class="date">Date</th><th>Payee</th><th>Envelope</th><th class="num">Amount</th></tr></thead>
         <tbody>
           ${recent
             .map(
               (t) => `<tr>
-              <td>${escapeHtml(t.date)}</td>
+              <td class="date">${escapeHtml(t.date)}</td>
               <td>${escapeHtml(t.payee || t.kind)}${t.memo ? `<div class="muted">${escapeHtml(t.memo)}</div>` : ""}</td>
               <td>${escapeHtml(t.envelope_name || (t.kind === "income" ? "Ready" : "—"))}</td>
               <td class="num">${moneySpan(t.amount)}</td>
@@ -188,7 +188,7 @@ export function envelopesPage({ groups, envelopes, flash }) {
           return `<tr>
             <td>
               <strong>${escapeHtml(e.name)}</strong>
-              ${e.target_amount ? `<div class="muted">Target ${formatMoney(e.target_amount)}${e.target_date ? ` by ${escapeHtml(e.target_date)}` : ""}</div>${progressBar(e.balance, e.target_amount)}` : ""}
+              ${e.target_amount ? `<div class="muted">Target ${formatMoney(e.target_amount)}${e.target_date ? ` by <span class="date">${escapeHtml(e.target_date)}</span>` : ""}</div>${progressBar(e.balance, e.target_amount)}` : ""}
             </td>
             <td class="num">${moneySpan(e.balance)}</td>
             <td>
@@ -333,49 +333,54 @@ function transferCandidateOptions(candidates) {
     .join("");
 }
 
-export function transactionRowsHtml(
-  transactions,
+function linkTransferFormHtml(txnId, candidates) {
+  return `<form method="post" action="/ledger/${txnId}/link-transfer" class="actions"
+             hx-post="/ledger/${txnId}/link-transfer" hx-target="closest tr" hx-swap="outerHTML"
+             hx-indicator="find button[type=submit]">
+             <select name="other_id" required>
+               <option value="">Link as transfer…</option>
+               ${transferCandidateOptions(candidates)}
+             </select>
+             <button type="submit" class="secondary has-spinner">
+               <span class="spinner" aria-hidden="true"></span>
+               <span class="btn-label">Link</span>
+             </button>
+           </form>`;
+}
+
+function transactionRowHtml(
+  t,
   envelopeOptionsHtml = "",
-  transferCandidatesById = new Map()
+  candidates = []
 ) {
-  return transactions
-    .map((t) => {
-      const needsCat = t.kind === "expense" && !t.envelope_id;
-      const candidates = transferCandidatesById.get(t.id) || [];
-      let cat;
-      if (needsCat) {
-        cat = `<form method="post" action="/ledger/${t.id}/categorize" class="actions">
+  const needsCat = t.kind === "expense" && !t.envelope_id;
+  let cat;
+  if (needsCat) {
+    cat = `<form method="post" action="/ledger/${t.id}/categorize" class="actions"
+             hx-post="/ledger/${t.id}/categorize" hx-target="closest tr" hx-swap="outerHTML"
+             hx-indicator="find button[type=submit]">
              <select name="envelope_id" required>${envelopeOptionsHtml}</select>
-             <button type="submit">Save</button>
+             <button type="submit" class="has-spinner">
+               <span class="spinner" aria-hidden="true"></span>
+               <span class="btn-label">Save</span>
+             </button>
            </form>`;
-        if (candidates.length) {
-          cat += `<form method="post" action="/ledger/${t.id}/link-transfer" class="actions">
-             <select name="other_id" required>
-               <option value="">Link as transfer…</option>
-               ${transferCandidateOptions(candidates)}
-             </select>
-             <button type="submit" class="secondary">Link</button>
-           </form>`;
-        }
-      } else if (t.kind === "income" && !t.envelope_id && candidates.length) {
-        cat = `<span class="muted">Ready</span>
-          <form method="post" action="/ledger/${t.id}/link-transfer" class="actions">
-             <select name="other_id" required>
-               <option value="">Link as transfer…</option>
-               ${transferCandidateOptions(candidates)}
-             </select>
-             <button type="submit" class="secondary">Link</button>
-           </form>`;
-      } else if (t.kind === "transfer" && t.transfer_account_name) {
-        cat = `Transfer ↔ ${escapeHtml(t.transfer_account_name)}`;
-      } else {
-        cat = escapeHtml(
-          t.envelope_name ||
-            (t.kind === "income" && !t.envelope_id ? "Ready" : t.kind)
-        );
-      }
-      return `<tr>
-        <td>${escapeHtml(t.date)}</td>
+    if (candidates.length) {
+      cat += linkTransferFormHtml(t.id, candidates);
+    }
+  } else if (t.kind === "income" && !t.envelope_id && candidates.length) {
+    cat = `<span class="muted">Ready</span>
+          ${linkTransferFormHtml(t.id, candidates)}`;
+  } else if (t.kind === "transfer" && t.transfer_account_name) {
+    cat = `Transfer ↔ ${escapeHtml(t.transfer_account_name)}`;
+  } else {
+    cat = escapeHtml(
+      t.envelope_name ||
+        (t.kind === "income" && !t.envelope_id ? "Ready" : t.kind)
+    );
+  }
+  return `<tr>
+        <td class="date">${escapeHtml(t.date)}</td>
         <td>${escapeHtml(t.account_name || "—")}</td>
         <td>${escapeHtml(t.payee || "")}${t.memo ? `<div class="muted">${escapeHtml(t.memo)}</div>` : ""}
           <div class="muted" style="font-size:0.75rem">${escapeHtml(t.kind)}</div></td>
@@ -387,8 +392,38 @@ export function transactionRowsHtml(
           </form>
         </td>
       </tr>`;
-    })
+}
+
+export function transactionRowsHtml(
+  transactions,
+  envelopeOptionsHtml = "",
+  transferCandidatesById = new Map()
+) {
+  return transactions
+    .map((t) =>
+      transactionRowHtml(
+        t,
+        envelopeOptionsHtml,
+        transferCandidatesById.get(t.id) || []
+      )
+    )
     .join("");
+}
+
+/** HTMX partial: one ledger row after categorize. */
+export function ledgerTransactionRowPartial(
+  transaction,
+  envelopes,
+  transferCandidates = []
+) {
+  const envelopeOptionsHtml = selectOptions(envelopes, null, {
+    empty: "Categorize…",
+  });
+  return transactionRowHtml(
+    transaction,
+    envelopeOptionsHtml,
+    transferCandidates
+  );
 }
 
 /** HTMX partial: table rows + optional infinite-scroll sentinel. */
@@ -426,12 +461,11 @@ export function ledgerRowsPartial({
 }
 
 export function ledgerPage({ accounts, envelopes, filters, flash }) {
-  const q = ledgerFilterQuery(filters);
   const body = `
     <h1>Ledger</h1>
     <p class="hint">Bank transactions come from <a href="/import">QFX/OFX import</a>. Categorize uncategorized outflows here, or link matching inflows/outflows on different accounts as transfers (they will not affect Ready to Assign). Scroll to load more.</p>
     <div class="panel">
-      <form method="get" action="/ledger" class="row">
+      <form id="ledger-filters" class="row">
         <label>Account
           <select name="account_id">
             ${selectOptions(accounts, filters.account_id, { empty: "All accounts" })}
@@ -445,21 +479,36 @@ export function ledgerPage({ accounts, envelopes, filters, flash }) {
         <label>From<input type="date" name="from" value="${escapeHtml(filters.from || "")}" /></label>
         <label>To<input type="date" name="to" value="${escapeHtml(filters.to || "")}" /></label>
         <label><span><input type="checkbox" name="uncategorized" value="1" ${filters.uncategorized ? "checked" : ""}/> Uncategorized only</span></label>
-        <button type="submit" class="secondary">Filter</button>
       </form>
     </div>
 
     <div class="panel">
       <table>
-        <thead><tr><th>Date</th><th>Account</th><th>Payee</th><th>Envelope</th><th class="num">Amount</th><th></th></tr></thead>
+        <thead><tr><th class="date">Date</th><th>Account</th><th>Payee</th><th>Envelope</th><th class="num">Amount</th><th></th></tr></thead>
         <tbody id="txn-rows"
-          hx-get="/ledger/rows?offset=0${q}"
-          hx-trigger="load"
+          hx-get="/ledger/rows?offset=0"
+          hx-include="#ledger-filters"
+          hx-trigger="load, change from:#ledger-filters"
+          hx-on:htmx:before-request="syncLedgerFilterUrl()"
           hx-swap="innerHTML">
           <tr><td colspan="6" class="muted">Loading…</td></tr>
         </tbody>
       </table>
-    </div>`;
+    </div>
+    <script>
+      function syncLedgerFilterUrl() {
+        const f = document.getElementById("ledger-filters");
+        if (!f) return;
+        const p = new URLSearchParams();
+        if (f.account_id.value) p.set("account_id", f.account_id.value);
+        if (f.envelope_id.value) p.set("envelope_id", f.envelope_id.value);
+        if (f.from.value) p.set("from", f.from.value);
+        if (f.to.value) p.set("to", f.to.value);
+        if (f.uncategorized.checked) p.set("uncategorized", "1");
+        const q = p.toString();
+        history.replaceState(null, "", "/ledger" + (q ? "?" + q : ""));
+      }
+    </script>`;
 
   return layout("Ledger", body, { flash, active: "ledger" });
 }
@@ -523,7 +572,7 @@ export function schedulesPage({
       <td><strong>${escapeHtml(s.name)}</strong>${!s.active ? ' <span class="pill">off</span>' : ""}
         <div class="muted">${escapeHtml(s.account_name)} · ${escapeHtml(s.cadence_kind)} / ${s.cadence_interval}</div></td>
       <td class="num">${moneySpan(s.amount)}</td>
-      <td>${escapeHtml(s.next_date)}</td>
+      <td class="date">${escapeHtml(s.next_date)}</td>
       <td>
         <form method="post" action="/schedules/income/${s.id}/toggle">
           <button type="submit" class="secondary">${s.active ? "Disable" : "Enable"}</button>
@@ -543,7 +592,7 @@ export function schedulesPage({
         <div class="muted">${escapeHtml(r.cadence_kind)} / ${r.cadence_interval}
           ${r.last_shortfall ? ` · shortfall ${formatMoney(r.last_shortfall)}` : ""}</div></td>
       <td class="num">${moneySpan(r.amount)}</td>
-      <td>${escapeHtml(r.next_date)}</td>
+      <td class="date">${escapeHtml(r.next_date)}</td>
       <td>
         <form method="post" action="/schedules/allowance/${r.id}/toggle">
           <button type="submit" class="secondary">${r.active ? "Disable" : "Enable"}</button>
@@ -563,7 +612,7 @@ export function schedulesPage({
     <div class="panel">
       <h3>Income schedules</h3>
       <table>
-        <thead><tr><th>Name</th><th class="num">Amount</th><th>Next</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th class="num">Amount</th><th class="date">Next</th><th></th></tr></thead>
         <tbody>${incomeRows || '<tr><td colspan="4" class="muted">None</td></tr>'}</tbody>
       </table>
     </div>
@@ -583,7 +632,7 @@ export function schedulesPage({
     <div class="panel">
       <h3>Envelope allowances</h3>
       <table>
-        <thead><tr><th>Envelope</th><th class="num">Amount</th><th>Next</th><th></th></tr></thead>
+        <thead><tr><th>Envelope</th><th class="num">Amount</th><th class="date">Next</th><th></th></tr></thead>
         <tbody>${allowRows || '<tr><td colspan="4" class="muted">None</td></tr>'}</tbody>
       </table>
     </div>
@@ -605,7 +654,7 @@ export function importPage({ accounts, imports, flash }) {
   const rows = imports
     .map(
       (i) => `<tr>
-      <td>${escapeHtml(i.imported_at)}</td>
+      <td class="date">${escapeHtml(i.imported_at)}</td>
       <td>${escapeHtml(i.filename)}</td>
       <td>${escapeHtml(i.account_name || "—")}</td>
       <td class="num">${i.added}</td>
@@ -641,7 +690,7 @@ export function importPage({ accounts, imports, flash }) {
     <div class="panel">
       <h3>Recent imports</h3>
       <table>
-        <thead><tr><th>When</th><th>File</th><th>Account</th><th class="num">Added</th><th class="num">Skipped</th></tr></thead>
+        <thead><tr><th class="date">When</th><th>File</th><th>Account</th><th class="num">Added</th><th class="num">Skipped</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="5" class="muted">No imports yet</td></tr>'}</tbody>
       </table>
     </div>`;

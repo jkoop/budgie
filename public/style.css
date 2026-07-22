@@ -265,6 +265,16 @@ th.num {
   white-space: nowrap;
 }
 
+.date,
+td.date,
+th.date {
+  white-space: nowrap;
+}
+
+input[type="date"] {
+  min-width: 9.5rem;
+}
+
 .money.pos {
   color: var(--pos);
 }
@@ -349,4 +359,42 @@ th.num {
   font-size: 0.85rem;
   color: var(--muted);
   margin: 0.25rem 0 0.75rem;
+}
+
+button.has-spinner {
+  position: relative;
+  min-width: 4.25rem;
+}
+
+button.has-spinner .spinner {
+  display: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
+
+button.secondary.has-spinner .spinner {
+  border-color: rgba(47, 107, 58, 0.25);
+  border-top-color: var(--accent);
+}
+
+button.has-spinner.htmx-request .spinner {
+  display: inline-block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: -0.45rem 0 0 -0.45rem;
+}
+
+button.has-spinner.htmx-request .btn-label {
+  visibility: hidden;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

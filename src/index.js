@@ -2,6 +2,7 @@ import { migrate } from "./db.js";
 import { dollarsToCents, todayISO } from "./money.js";
 import {
   html,
+  isHtmx,
   parseBody,
   parseCadenceFields,
   publicFile,
@@ -20,6 +21,7 @@ import {
   importPage,
   ledgerPage,
   ledgerRowsPartial,
+  ledgerTransactionRowPartial,
   schedulesPage,
   TXN_PAGE_SIZE,
 } from "./views/pages.js";
@@ -30,6 +32,26 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const TICK_MIN_INTERVAL_MS = 2000;
 let lastTickAt = 0;
+
+function ledgerTxnRowHtmxResponse(txnId) {
+  const txn = budget.getLedgerTransaction(txnId);
+  const candidates =
+    budget.transferLinkCandidatesByTxnId([txn]).get(txnId) || [];
+  return html(
+    ledgerTransactionRowPartial(txn, budget.listEnvelopes(), candidates)
+  );
+}
+
+function ledgerTxnRowHtmxOrRedirect(req, txnId, flash) {
+  if (isHtmx(req)) {
+    const referer = req.headers.get("referer") || "";
+    if (referer.includes("uncategorized=1")) {
+      return html("");
+    }
+    return ledgerTxnRowHtmxResponse(txnId);
+  }
+  return redirect(req.headers.get("referer") || "/ledger", flash);
+}
 
 async function handle(req) {
   const url = new URL(req.url);
@@ -292,11 +314,9 @@ async function handle(req) {
       // Ledger (categorize / link transfer / delete — bank txns come from QFX import)
       const categorize = path.match(/^\/ledger\/(\d+)\/categorize$/);
       if (categorize) {
-        budget.categorizeTransaction(
-          Number(categorize[1]),
-          Number(data.envelope_id)
-        );
-        return redirect(req.headers.get("referer") || "/ledger", {
+        const txnId = Number(categorize[1]);
+        budget.categorizeTransaction(txnId, Number(data.envelope_id));
+        return ledgerTxnRowHtmxOrRedirect(req, txnId, {
           type: "success",
           message: "Categorized",
         });
@@ -304,11 +324,9 @@ async function handle(req) {
 
       const linkXfer = path.match(/^\/ledger\/(\d+)\/link-transfer$/);
       if (linkXfer) {
-        budget.linkTransactionsAsTransfer(
-          Number(linkXfer[1]),
-          Number(data.other_id)
-        );
-        return redirect(req.headers.get("referer") || "/ledger", {
+        const txnId = Number(linkXfer[1]);
+        budget.linkTransactionsAsTransfer(txnId, Number(data.other_id));
+        return ledgerTxnRowHtmxOrRedirect(req, txnId, {
           type: "success",
           message: "Linked as transfer",
         });

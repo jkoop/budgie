@@ -42,6 +42,8 @@ describe("ledger HTMX chunks", () => {
     const html = transactionRowsHtml(txns, "", byId);
     expect(html).toContain("Link as transfer");
     expect(html).toContain("/link-transfer");
+    expect(html).toContain('hx-post="/ledger/');
+    expect(html).toContain('hx-target="closest tr"');
     expect(html).toContain("Deposit");
   });
 
@@ -61,6 +63,8 @@ describe("ledger HTMX chunks", () => {
     expect(html).toContain("Categorize");
     expect(html).toContain("/ledger/");
     expect(html).toContain("Shop");
+    expect(html).toContain('hx-target="closest tr"');
+    expect(html).toContain('hx-swap="outerHTML"');
   });
 
   test("ledgerRowsPartial builds envelope options once", () => {

@@ -612,6 +612,22 @@ export function linkTransactionsAsTransfer(txnId, otherTxnId) {
   bumpAccount(inn.account_id, inn.amount);
 }
 
+/** Single ledger row (same shape as listTransactions). */
+export function getLedgerTransaction(id) {
+  return db
+    .query(
+      `SELECT t.*, a.name AS account_name, e.name AS envelope_name,
+              tpa.name AS transfer_account_name
+       FROM transactions t
+       LEFT JOIN accounts a ON a.id = t.account_id
+       LEFT JOIN envelopes e ON e.id = t.envelope_id
+       LEFT JOIN transactions tp ON tp.id = t.transfer_pair_id
+       LEFT JOIN accounts tpa ON tpa.id = tp.account_id
+       WHERE t.id = ?`
+    )
+    .get(id);
+}
+
 export function listTransactions({
   account_id,
   envelope_id,

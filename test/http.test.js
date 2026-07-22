@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { parseBody, readFlash, redirect } from "../src/http.js";
+import { parseBody, readFlash, redirect, isHtmx } from "../src/http.js";
+
+describe("isHtmx", () => {
+  test("detects HTMX requests", () => {
+    expect(
+      isHtmx(
+        new Request("http://x/", { headers: { "HX-Request": "true" } })
+      )
+    ).toBe(true);
+    expect(isHtmx(new Request("http://x/"))).toBe(false);
+  });
+});
 
 describe("redirect", () => {
   test("sets Location and optional flash cookie", () => {
