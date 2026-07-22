@@ -136,6 +136,8 @@ async function handle(req) {
             filters,
             offset,
             hasMore,
+            transferCandidatesById:
+              budget.transferLinkCandidatesByTxnId(transactions),
           }),
           { clearFlash: clearHeader }
         );
@@ -287,7 +289,7 @@ async function handle(req) {
         });
       }
 
-      // Ledger (categorize / delete only — bank txns come from QFX import)
+      // Ledger (categorize / link transfer / delete — bank txns come from QFX import)
       const categorize = path.match(/^\/ledger\/(\d+)\/categorize$/);
       if (categorize) {
         budget.categorizeTransaction(
@@ -297,6 +299,18 @@ async function handle(req) {
         return redirect(req.headers.get("referer") || "/ledger", {
           type: "success",
           message: "Categorized",
+        });
+      }
+
+      const linkXfer = path.match(/^\/ledger\/(\d+)\/link-transfer$/);
+      if (linkXfer) {
+        budget.linkTransactionsAsTransfer(
+          Number(linkXfer[1]),
+          Number(data.other_id)
+        );
+        return redirect(req.headers.get("referer") || "/ledger", {
+          type: "success",
+          message: "Linked as transfer",
         });
       }
 

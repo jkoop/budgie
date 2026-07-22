@@ -4,6 +4,7 @@ import {
   importBankTxn,
   listEnvelopes,
   listTransactions,
+  transferLinkCandidatesByTxnId,
 } from "../src/services/budget.js";
 import { selectOptions } from "../src/views/layout.js";
 import {
@@ -15,6 +16,35 @@ import {
 useCleanDb();
 
 describe("ledger HTMX chunks", () => {
+  test("transactionRowsHtml renders transfer link controls for matching legs", () => {
+    const checking = accountByName("Checking");
+    const savings = accountByName("Savings");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -3000,
+      date: "2026-07-01",
+      payee: "Withdrawal",
+      memo: null,
+      fitid: "L1",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 3000,
+      date: "2026-07-01",
+      payee: "Deposit",
+      memo: null,
+      fitid: "L2",
+      import_id: null,
+    });
+    const txns = listTransactions({ limit: 10 });
+    const byId = transferLinkCandidatesByTxnId(txns);
+    const html = transactionRowsHtml(txns, "", byId);
+    expect(html).toContain("Link as transfer");
+    expect(html).toContain("/link-transfer");
+    expect(html).toContain("Deposit");
+  });
+
   test("transactionRowsHtml renders categorize controls for uncategorized", () => {
     importBankTxn({
       account_id: accountByName("Checking").id,

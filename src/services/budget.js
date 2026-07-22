@@ -488,6 +488,130 @@ export function importBankTxn({
   return { skipped: false, transfer: false };
 }
 
+const TRANSFER_LINK_MAX_DAYS = 7;
+
+function isTransferLinkable(txn) {
+  return (
+    txn &&
+    (txn.kind === "income" || txn.kind === "expense") &&
+    txn.envelope_id == null
+  );
+}
+
+function daysApart(isoA, isoB) {
+  const a = new Date(`${isoA}T00:00:00`);
+  const b = new Date(`${isoB}T00:00:00`);
+  return Math.abs(a - b) / 86400000;
+}
+
+function reverseLinkableTransactionEffects(txn) {
+  if (txn.kind === "income") {
+    bumpAccount(txn.account_id, -txn.amount);
+    adjustReady(-txn.amount);
+  } else if (txn.kind === "expense") {
+    bumpAccount(txn.account_id, -txn.amount);
+  } else {
+    throw new Error("Cannot link this transaction type");
+  }
+}
+
+/** Match imported income/expense legs that can be linked as a transfer. */
+export function listTransferLinkCandidates(txnId) {
+  const txn = db.query("SELECT * FROM transactions WHERE id = ?").get(txnId);
+  if (!isTransferLinkable(txn)) return [];
+  return db
+    .query(
+      `SELECT t.*, a.name AS account_name
+       FROM transactions t
+       LEFT JOIN accounts a ON a.id = t.account_id
+       WHERE t.id != ?
+         AND t.account_id != ?
+         AND t.amount = ?
+         AND t.kind IN ('income', 'expense')
+         AND t.envelope_id IS NULL
+       ORDER BY t.date DESC, t.id DESC`
+    )
+    .all(txnId, txn.account_id, -txn.amount)
+    .filter((c) => daysApart(c.date, txn.date) <= TRANSFER_LINK_MAX_DAYS)
+    .slice(0, 15);
+}
+
+/** Build candidate lists for a page of ledger rows (one pool query). */
+export function transferLinkCandidatesByTxnId(transactions) {
+  const linkable = transactions.filter(isTransferLinkable);
+  if (!linkable.length) return new Map();
+
+  const pool = db
+    .query(
+      `SELECT t.*, a.name AS account_name
+       FROM transactions t
+       LEFT JOIN accounts a ON a.id = t.account_id
+       WHERE t.kind IN ('income', 'expense') AND t.envelope_id IS NULL`
+    )
+    .all();
+
+  const map = new Map();
+  for (const txn of linkable) {
+    const matches = pool
+      .filter(
+        (c) =>
+          c.id !== txn.id &&
+          c.account_id !== txn.account_id &&
+          c.amount === -txn.amount &&
+          daysApart(c.date, txn.date) <= TRANSFER_LINK_MAX_DAYS
+      )
+      .slice(0, 15);
+    if (matches.length) map.set(txn.id, matches);
+  }
+  return map;
+}
+
+/**
+ * Convert two offsetting imported legs into a linked transfer pair.
+ * Undoes Ready/envelope effects from income/expense, then re-applies account-only bumps.
+ */
+export function linkTransactionsAsTransfer(txnId, otherTxnId) {
+  if (txnId === otherTxnId) {
+    throw new Error("Cannot link a transaction to itself");
+  }
+  const a = db.query("SELECT * FROM transactions WHERE id = ?").get(txnId);
+  const b = db.query("SELECT * FROM transactions WHERE id = ?").get(otherTxnId);
+  if (!a || !b) throw new Error("Transaction not found");
+  if (!isTransferLinkable(a) || !isTransferLinkable(b)) {
+    throw new Error("Only uncategorized income or expense can be linked");
+  }
+  if (a.account_id === b.account_id) {
+    throw new Error("Transfers must be between different accounts");
+  }
+  if (a.amount + b.amount !== 0) {
+    throw new Error("Amounts must offset");
+  }
+  if (daysApart(a.date, b.date) > TRANSFER_LINK_MAX_DAYS) {
+    throw new Error("Transaction dates are too far apart");
+  }
+
+  const out = a.amount < 0 ? a : b;
+  const inn = a.amount > 0 ? a : b;
+
+  reverseLinkableTransactionEffects(out);
+  reverseLinkableTransactionEffects(inn);
+
+  db.query(
+    "UPDATE transactions SET kind = 'transfer', envelope_id = NULL WHERE id IN (?, ?)"
+  ).run(out.id, inn.id);
+  db.query("UPDATE transactions SET transfer_pair_id = ? WHERE id = ?").run(
+    inn.id,
+    out.id
+  );
+  db.query("UPDATE transactions SET transfer_pair_id = ? WHERE id = ?").run(
+    out.id,
+    inn.id
+  );
+
+  bumpAccount(out.account_id, out.amount);
+  bumpAccount(inn.account_id, inn.amount);
+}
+
 export function listTransactions({
   account_id,
   envelope_id,
@@ -522,10 +646,13 @@ export function listTransactions({
   params.push(limit, offset);
   return db
     .query(
-      `SELECT t.*, a.name AS account_name, e.name AS envelope_name
+      `SELECT t.*, a.name AS account_name, e.name AS envelope_name,
+              tpa.name AS transfer_account_name
        FROM transactions t
        LEFT JOIN accounts a ON a.id = t.account_id
        LEFT JOIN envelopes e ON e.id = t.envelope_id
+       LEFT JOIN transactions tp ON tp.id = t.transfer_pair_id
+       LEFT JOIN accounts tpa ON tpa.id = tp.account_id
        ${where}
        ORDER BY t.date DESC, t.id DESC
        LIMIT ? OFFSET ?`

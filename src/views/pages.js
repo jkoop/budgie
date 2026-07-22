@@ -324,19 +324,56 @@ function ledgerFilterQuery(filters) {
   return s ? `&${s}` : "";
 }
 
-export function transactionRowsHtml(transactions, envelopeOptionsHtml = "") {
+function transferCandidateOptions(candidates) {
+  return candidates
+    .map((c) => {
+      const label = `${c.date} · ${c.account_name || "—"} · ${formatMoney(c.amount)}${c.payee ? ` · ${c.payee}` : ""}`;
+      return `<option value="${c.id}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+export function transactionRowsHtml(
+  transactions,
+  envelopeOptionsHtml = "",
+  transferCandidatesById = new Map()
+) {
   return transactions
     .map((t) => {
       const needsCat = t.kind === "expense" && !t.envelope_id;
-      const cat = needsCat
-        ? `<form method="post" action="/ledger/${t.id}/categorize" class="actions">
+      const candidates = transferCandidatesById.get(t.id) || [];
+      let cat;
+      if (needsCat) {
+        cat = `<form method="post" action="/ledger/${t.id}/categorize" class="actions">
              <select name="envelope_id" required>${envelopeOptionsHtml}</select>
              <button type="submit">Save</button>
-           </form>`
-        : escapeHtml(
-            t.envelope_name ||
-              (t.kind === "income" && !t.envelope_id ? "Ready" : t.kind)
-          );
+           </form>`;
+        if (candidates.length) {
+          cat += `<form method="post" action="/ledger/${t.id}/link-transfer" class="actions">
+             <select name="other_id" required>
+               <option value="">Link as transfer…</option>
+               ${transferCandidateOptions(candidates)}
+             </select>
+             <button type="submit" class="secondary">Link</button>
+           </form>`;
+        }
+      } else if (t.kind === "income" && !t.envelope_id && candidates.length) {
+        cat = `<span class="muted">Ready</span>
+          <form method="post" action="/ledger/${t.id}/link-transfer" class="actions">
+             <select name="other_id" required>
+               <option value="">Link as transfer…</option>
+               ${transferCandidateOptions(candidates)}
+             </select>
+             <button type="submit" class="secondary">Link</button>
+           </form>`;
+      } else if (t.kind === "transfer" && t.transfer_account_name) {
+        cat = `Transfer ↔ ${escapeHtml(t.transfer_account_name)}`;
+      } else {
+        cat = escapeHtml(
+          t.envelope_name ||
+            (t.kind === "income" && !t.envelope_id ? "Ready" : t.kind)
+        );
+      }
       return `<tr>
         <td>${escapeHtml(t.date)}</td>
         <td>${escapeHtml(t.account_name || "—")}</td>
@@ -361,11 +398,16 @@ export function ledgerRowsPartial({
   filters,
   offset,
   hasMore,
+  transferCandidatesById = new Map(),
 }) {
   const envelopeOptionsHtml = selectOptions(envelopes, null, {
     empty: "Categorize…",
   });
-  const rows = transactionRowsHtml(transactions, envelopeOptionsHtml);
+  const rows = transactionRowsHtml(
+    transactions,
+    envelopeOptionsHtml,
+    transferCandidatesById
+  );
   if (!rows && offset === 0) {
     return `<tr><td colspan="6" class="muted">No transactions</td></tr>`;
   }
@@ -387,7 +429,7 @@ export function ledgerPage({ accounts, envelopes, filters, flash }) {
   const q = ledgerFilterQuery(filters);
   const body = `
     <h1>Ledger</h1>
-    <p class="hint">Bank transactions come from <a href="/import">QFX/OFX import</a>. Categorize uncategorized outflows here. Scroll to load more.</p>
+    <p class="hint">Bank transactions come from <a href="/import">QFX/OFX import</a>. Categorize uncategorized outflows here, or link matching inflows/outflows on different accounts as transfers (they will not affect Ready to Assign). Scroll to load more.</p>
     <div class="panel">
       <form method="get" action="/ledger" class="row">
         <label>Account

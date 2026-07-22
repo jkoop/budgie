@@ -19,6 +19,9 @@ import {
   listTransactions,
   moveBetweenEnvelopes,
   transferAccounts,
+  linkTransactionsAsTransfer,
+  listTransferLinkCandidates,
+  transferLinkCandidatesByTxnId,
   updateEnvelope,
 } from "../src/services/budget.js";
 
@@ -196,6 +199,132 @@ describe("YNAB core flow", () => {
       target_date: "2027-01-01",
     });
     expect(envelopeByName("Emergency Fund").target_amount).toBe(200000);
+  });
+});
+
+describe("manual transfer linking", () => {
+  test("links uncategorized expense and income without affecting Ready", () => {
+    const checking = accountByName("Checking");
+    const savings = accountByName("Savings");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -5000,
+      date: "2026-07-01",
+      payee: "Move to savings",
+      memo: null,
+      fitid: "OUT-M",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 5000,
+      date: "2026-07-01",
+      payee: "From checking",
+      memo: null,
+      fitid: "IN-M",
+      import_id: null,
+    });
+    expect(getReady()).toBe(5000);
+
+    const out = listTransactions({ account_id: checking.id })[0];
+    const inn = listTransactions({ account_id: savings.id })[0];
+    linkTransactionsAsTransfer(out.id, inn.id);
+
+    expect(getReady()).toBe(0);
+    expect(accountByName("Checking").balance).toBe(-5000);
+    expect(accountByName("Savings").balance).toBe(5000);
+
+    const xfer = db
+      .query("SELECT * FROM transactions WHERE kind = 'transfer' ORDER BY id")
+      .all();
+    expect(xfer).toHaveLength(2);
+    expect(xfer[0].transfer_pair_id).toBe(xfer[1].id);
+    expect(xfer[1].transfer_pair_id).toBe(xfer[0].id);
+    expect(xfer.map((t) => t.import_fitid)).toEqual(["OUT-M", "IN-M"]);
+  });
+
+  test("rejects mismatched amounts and categorized expenses", () => {
+    const checking = accountByName("Checking");
+    const savings = accountByName("Savings");
+    const groceries = envelopeByName("Groceries");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -5000,
+      date: "2026-07-01",
+      payee: "Out",
+      memo: null,
+      fitid: "X1",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 4000,
+      date: "2026-07-01",
+      payee: "In",
+      memo: null,
+      fitid: "X2",
+      import_id: null,
+    });
+    const out = listTransactions({ account_id: checking.id })[0];
+    const inn = listTransactions({ account_id: savings.id })[0];
+    expect(() => linkTransactionsAsTransfer(out.id, inn.id)).toThrow(
+      /offset/
+    );
+
+    categorizeTransaction(out.id, groceries.id);
+    importBankTxn({
+      account_id: savings.id,
+      amount: 5000,
+      date: "2026-07-01",
+      payee: "In2",
+      memo: null,
+      fitid: "X3",
+      import_id: null,
+    });
+    const inn2 = listTransactions({ account_id: savings.id })[0];
+    expect(() => linkTransactionsAsTransfer(out.id, inn2.id)).toThrow(
+      /uncategorized/
+    );
+  });
+
+  test("lists transfer link candidates within date window", () => {
+    const checking = accountByName("Checking");
+    const savings = accountByName("Savings");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -2500,
+      date: "2026-07-01",
+      payee: "Out",
+      memo: null,
+      fitid: "C1",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 2500,
+      date: "2026-07-08",
+      payee: "In",
+      memo: null,
+      fitid: "C2",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 2500,
+      date: "2026-07-20",
+      payee: "Too late",
+      memo: null,
+      fitid: "C3",
+      import_id: null,
+    });
+    const out = listTransactions({ account_id: checking.id })[0];
+    const candidates = listTransferLinkCandidates(out.id);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].payee).toBe("In");
+
+    const page = listTransactions({ limit: 10 });
+    const byId = transferLinkCandidatesByTxnId(page);
+    expect(byId.get(out.id)).toHaveLength(1);
   });
 });
 
