@@ -1,0 +1,13 @@
+{
+  "name": "budgie",
+  "version": "1.0.0",
+  "description": "YNAB-style envelope budgeting for a single user",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.js",
+    "dev": "bun --watch run src/index.js",
+    "test": "bun test"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}
