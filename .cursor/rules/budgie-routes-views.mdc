@@ -1,0 +1,42 @@
+---
+description: HTTP routing, flash/PRG, and HTML view patterns
+globs: src/index.js,src/http.js,src/views/**
+alwaysApply: false
+---
+
+# Routes and views
+
+## POST → redirect (PRG)
+
+```js
+// ✅ POST handler
+return redirect("/envelopes", { type: "success", message: "Saved." });
+
+// ❌ Do not render HTML from POST
+return html(body);
+```
+
+Catch errors with flash redirects, not 4xx/5xx HTML pages.
+
+## GET flash
+
+Pass `{ clearFlash: clearHeader }` into `html()` on GET responses or flash messages repeat.
+
+## Views
+
+- Full pages: `layout(title, body, { flash, active })`.
+- HTMX partials (e.g. `ledgerRowsPartial`) — **no** layout wrapper.
+- Escape user text with `escapeHtml`.
+- Checkboxes: `value="1"`; absent field = false.
+
+## Tick
+
+Call `schedules.tick(todayISO())` on page loads **except** `/ledger/rows` (infinite scroll must not trigger tick).
+
+## Forms
+
+- Import: `multipart/form-data`, field name `files` (multiple).
+- Money form values: `(cents / 100).toFixed(2)`; display via `formatMoney` / `moneySpan`.
+- Cadence: `cadenceFields()` + `parseCadenceFields(data)` in views/pages.
+
+Keep SQL and business rules out of `index.js` and views — delegate to services.

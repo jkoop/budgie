@@ -1,0 +1,30 @@
+---
+description: Bun test conventions and DB isolation
+globs: test/**
+alwaysApply: false
+---
+
+# Tests
+
+Run with `bun test`. `bunfig.toml` preloads `test/preload.js` — sets `BUDGIE_DB` to a temp file (never touches `data/budgie.db`).
+
+## DB tests
+
+```js
+import { useCleanDb, accountByName } from "./helpers.js";
+useCleanDb(); // beforeEach → resetDatabase()
+import { ... } from "../src/services/...";
+```
+
+- `resetDatabase()` wipes rows and re-seeds; for tests only.
+- No full `Bun.serve` integration tests — call services, views, and `http.js` helpers directly.
+
+## OFX fixtures
+
+`ofxFile({ amount: -1234 })` uses **cents** → TRNAMT `-12.34`.
+
+## Migration tests
+
+`test/migrations.test.js` covers `runMigrations` and `user_version`. Add cases when new migrations have special upgrade logic.
+
+Do not assume tests need new npm devDependencies.

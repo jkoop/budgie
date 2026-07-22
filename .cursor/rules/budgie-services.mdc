@@ -1,0 +1,40 @@
+---
+description: Domain services, money handling, OFX import rules
+globs: src/services/**,src/money.js
+alwaysApply: false
+---
+
+# Services and money
+
+## Cents everywhere in SQL
+
+- Service functions take/return **integer cents**.
+- `dollarsToCents()` only at the HTTP/form boundary in `index.js`.
+- Never store dollar floats in SQLite.
+
+## Transaction flow
+
+```
+OFX import → account balance ±
+  credit  → Ready +
+  debit   → uncategorized (account only until categorized)
+  transfer → paired legs; no Ready/envelope impact
+```
+
+- FITID dedupe: `UNIQUE(account_id, import_fitid)`.
+- Accounts need `ofx_account_id` set before import matches.
+
+## Budget operations
+
+- Assign: Ready → envelope
+- Move: envelope ↔ envelope (Ready unchanged)
+- Cover: overspent envelope ← Ready or another envelope
+- `addExpense` accepts positive amount and negates for storage
+
+## Schedules
+
+- `tick()` can catch up many periods (`next_date <= today`, cap 500).
+- Allowances are partial (won't drive Ready negative).
+- Scheduled income posts the full amount.
+
+Use `db.transaction()` for multi-statement mutations (see `ofx.js`, `budget.js`).

@@ -9,6 +9,7 @@ Single-user YNAB-style envelope budgeting. Bun + SQLite, zero npm deps, no build
 | `src/index.js` | Entry: `migrate()`, Bun server, **all routes inline** |
 | `src/http.js` | Flash cookies, 303 redirects, body parsing, static files |
 | `src/db.js` | SQLite open/migrate/seed, `ready_to_assign`, `resetDatabase()` |
+| `src/migrations.js` | Versioned schema migrations (`PRAGMA user_version`) |
 | `src/money.js` | Cents ↔ dollars, `todayISO()`, `escapeHtml()` |
 | `src/services/` | Domain logic + SQL (`budget`, `schedules`, `goals`, `ofx`) |
 | `src/views/` | HTML strings: `layout.js` shell, `pages.js` page bodies |
@@ -58,6 +59,35 @@ Cover:  overspent envelope ← Ready (or another envelope)
 
 Visiting almost any page can mutate the DB (income, allowances, auto-fund goals). Catch-up fires every missed period while `next_date <= today` (capped at 500). Allowances are **partial** (won’t drive Ready negative; shortfall recorded). Scheduled income is **full** amount.
 
+## Migrations
+
+Schema is versioned with SQLite **`PRAGMA user_version`** (not a custom table).
+
+| Piece | Location |
+|-------|----------|
+| Migration list + runner | `src/migrations.js` — `migrations[]`, `runMigrations(db)`, `getUserVersion(db)` |
+| Orchestration + seeds | `src/db.js` — `migrate()` = `runMigrations()` then `seed()` |
+
+**Rules:**
+
+- Each migration has sequential `version` (1, 2, 3…), `name`, and `up(db)`. Gaps throw.
+- `up` runs **once** per database inside a transaction; then `user_version` is set.
+- **Schema only in migrations** — DDL, indexes, `ALTER TABLE`. No default rows.
+- **Seeds in `seed()`** — idempotent inserts when tables are empty (`budget_meta`, envelope groups, starter accounts). `resetDatabase()` wipes rows and re-runs `migrate()` so seeds repopulate; it does **not** reset `user_version`.
+- Existing DBs at `user_version = 0` upgrade safely on next startup (migration 1 still uses `CREATE IF NOT EXISTS`).
+- Do **not** put ad-hoc `CREATE TABLE` in `migrate()` — add a new numbered migration instead.
+
+```js
+// src/migrations.js — example migration 2
+{
+  version: 2,
+  name: "add_notes_column",
+  up(db) {
+    db.exec("ALTER TABLE accounts ADD COLUMN notes TEXT;");
+  },
+},
+```
+
 ## HTML / forms
 
 - Full pages: `layout(title, body, { flash, active })`. HTMX partials (`ledgerRowsPartial`) — **no** layout.
@@ -68,7 +98,7 @@ Visiting almost any page can mutate the DB (income, allowances, auto-fund goals)
 
 ## Adding a feature
 
-1. Schema in `migrate()` in `db.js` (idempotent `CREATE IF NOT EXISTS`; no version table).
+1. Add a numbered migration in `src/migrations.js` (`up` runs once per DB; bump `version` sequentially). Seed/default rows stay in `seed()` in `db.js`.
 2. Logic in the right service (keep SQL out of `index.js` / views).
 3. Route + `dollarsToCents` / flash redirect in `index.js`.
 4. Page/partial in `views/pages.js`; nav key in `layout.js` if needed.
@@ -108,3 +138,4 @@ OFX fixtures use **cents** in `ofxFile({ amount: -1234 })` → TRNAMT `-12.34`. 
 6. **Do not add npm packages** unless asked; prefer Bun builtins (`bun:sqlite`, etc.).
 7. **No multi-user / auth** — never invent tenancy or sessions.
 8. **`.dockerignore` excludes `test/`** — image is runtime-only.
+9. **Migrations vs seeds** — schema changes go in `src/migrations.js`; default rows stay in `seed()`. Never rely on re-running migration `up` to fix missing seed data.

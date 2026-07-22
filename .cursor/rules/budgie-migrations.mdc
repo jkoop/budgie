@@ -1,0 +1,27 @@
+---
+description: SQLite schema migrations via PRAGMA user_version
+globs: src/migrations.js,src/db.js
+alwaysApply: false
+---
+
+# Budgie migrations
+
+Schema changes use **`PRAGMA user_version`** in `src/migrations.js`. `migrate()` in `db.js` calls `runMigrations(db)` then `seed()`.
+
+## Adding a migration
+
+1. Append to `migrations[]` with the **next sequential** `version` (no gaps).
+2. Put DDL in `up(db)` — `CREATE`, `ALTER`, indexes. Use `db.exec()` or prepared statements.
+3. Each `up` runs once inside `db.transaction()`; version is bumped after success.
+4. Add a test in `test/migrations.test.js` if behavior is non-trivial.
+
+## Do not
+
+- Put default/seed rows in migrations — use `seed()` in `db.js`.
+- Add `CREATE TABLE` to `migrate()` directly — always add a numbered migration.
+- Reset `user_version` in `resetDatabase()` — tests rely on schema staying applied while rows are wiped.
+- Skip version numbers — `runMigrations` throws on gaps.
+
+## Seeds (`seed()` in db.js)
+
+Idempotent: insert starter groups/envelopes/accounts only when counts are zero. Safe to run on every startup.

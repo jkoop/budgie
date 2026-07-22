@@ -1,0 +1,34 @@
+---
+description: Budgie stack, architecture, and common agent mistakes
+alwaysApply: true
+---
+
+# Budgie core constraints
+
+Single-user envelope budgeting app. **Bun + SQLite**, zero npm deps, **no build step**, **no auth/TLS**, **no JSON API**.
+
+## Architecture
+
+- `src/index.js` — inline URL routing only; thin handlers.
+- `src/services/` — domain logic + SQL.
+- `src/views/` — HTML string templates (`layout.js`, `pages.js`).
+- `public/` — static CSS.
+
+Do **not** introduce Express/Fastify routers, React/Vue, REST/JSON endpoints, webpack/vite, or user sessions unless explicitly asked.
+
+## Money & domain
+
+- DB stores **integer cents**. Convert at HTTP boundary with `dollarsToCents()` from `money.js`.
+- Expenses are **negative** in the DB.
+- Bank transactions enter **only via OFX/QFX import** — no manual “add transaction” UI.
+- Ready to Assign is stored in `budget_meta.ready_to_assign`, not derived.
+- No multi-tenant or auth layers.
+
+## Side effects
+
+- Most GETs call `schedules.tick()` (debounced) and **mutate the DB**. `/ledger/rows` skips tick.
+- POST handlers use **PRG**: `redirect(path, { type, message })`, never render POST responses.
+
+## Dependencies
+
+Do not add npm packages unless the user asks. Prefer Bun builtins (`bun:sqlite`, etc.).
