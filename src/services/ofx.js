@@ -1,6 +1,6 @@
 import { dollarsToCents } from "../money.js";
 import { db } from "../db.js";
-import { importBankTxn, reconcileReadyFromAccounts } from "./budget.js";
+import { importBankTxn, reconcileReadyFromAccounts, applyOpeningBalanceFromLedger } from "./budget.js";
 
 /**
  * Minimal SGML/XML OFX/QFX parser for bank statement transactions.
@@ -44,6 +44,16 @@ function parseOfxDate(raw) {
 function parseAmount(raw) {
   if (raw == null || String(raw).trim() === "") return null;
   return dollarsToCents(raw);
+}
+
+function parseLedgerBal(body) {
+  const m = body.match(/<LEDGERBAL>[\s\S]*?(?:<\/LEDGERBAL>|(?=<\/\w))/i);
+  if (!m) return null;
+  const block = m[0];
+  const amount = parseAmount(tagValue(block, "BALAMT"));
+  const date = parseOfxDate(tagValue(block, "DTASOF"));
+  if (amount == null) return null;
+  return { amount, date };
 }
 
 export function parseOfx(text) {
@@ -95,6 +105,7 @@ export function parseOfx(text) {
     accountId,
     bankId,
     acctType,
+    ledgerBal: parseLedgerBal(body),
     transactions: txns,
   };
 }
@@ -170,6 +181,11 @@ export function importOfxFile(filename, text) {
 
     reconcileReadyFromAccounts();
 
+    if (parsed.ledgerBal) {
+      applyOpeningBalanceFromLedger(account.id, parsed.ledgerBal);
+      reconcileReadyFromAccounts();
+    }
+
     return {
       importId,
       account,
@@ -179,6 +195,7 @@ export function importOfxFile(filename, text) {
       errors,
       transfers,
       total: parsed.transactions.length,
+      ledgerBal: parsed.ledgerBal,
     };
   })();
 }

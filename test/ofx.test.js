@@ -76,6 +76,18 @@ describe("parseOfx", () => {
     expect(parseOfx(text).transactions[0].amount).toBe(-999);
   });
 
+  test("parses ledger balance", () => {
+    const text = ofxFile({
+      accountId: "111",
+      ledgerBal: { amount: 125000, date: "2026-07-15" },
+      transactions: [
+        { fitid: "A1", amount: -1234, date: "2026-07-15", payee: "Coffee" },
+      ],
+    });
+    const parsed = parseOfx(text);
+    expect(parsed.ledgerBal).toEqual({ amount: 125000, date: "2026-07-15" });
+  });
+
   test("skips zero / missing amount rows", () => {
     const text = `<OFX>
 <ACCTID>1
@@ -146,6 +158,43 @@ describe("importOfxFile", () => {
     const again = importOfxFile("a.ofx", text);
     expect(again.added).toBe(0);
     expect(again.skipped).toBe(1);
+  });
+
+  test("infers opening balance from ledger balance on first import", () => {
+    setOfxIds({ Chequing: "111" });
+    const text = ofxFile({
+      accountId: "111",
+      ledgerBal: { amount: 10000, date: "2026-06-30" },
+      transactions: [
+        { fitid: "I1", amount: 10000, date: "2026-07-01", payee: "Pay" },
+        { fitid: "E1", amount: -2500, date: "2026-07-02", payee: "Shop" },
+      ],
+    });
+    importOfxFile("mix.ofx", text);
+    const acct = accountByName("Chequing");
+    expect(acct.opening_balance).toBe(2500);
+    expect(acct.opening_balance_date).toBe("2026-06-30");
+    expect(acct.balance).toBe(7500);
+    expect(getReady()).toBe(10000);
+  });
+
+  test("does not overwrite manual opening balance on import", () => {
+    setOfxIds({ Chequing: "111" });
+    db.query(
+      "UPDATE accounts SET opening_balance = ?, opening_balance_date = ? WHERE name = ?"
+    ).run(50000, "2026-01-01", "Chequing");
+    const text = ofxFile({
+      accountId: "111",
+      ledgerBal: { amount: 99999, date: "2026-07-15" },
+      transactions: [
+        { fitid: "I1", amount: 1000, date: "2026-07-01", payee: "Pay" },
+      ],
+    });
+    importOfxFile("keep-opening.ofx", text);
+    const acct = accountByName("Chequing");
+    expect(acct.opening_balance).toBe(50000);
+    expect(acct.opening_balance_date).toBe("2026-01-01");
+    expect(acct.balance).toBe(1000);
   });
 
   test("inflows and outflows reconcile Ready to account balance", () => {

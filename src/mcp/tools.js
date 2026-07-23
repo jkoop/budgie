@@ -174,7 +174,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "update_account",
-    description: "Update account name, OFX ID, or archived status.",
+    description:
+      "Update account name, OFX ID, archived status, or opening balance. Use match_bank_balance to back-calculate opening from the bank’s current total.",
     inputSchema: {
       type: "object",
       properties: {
@@ -182,6 +183,19 @@ const TOOL_DEFINITIONS = [
         name: { type: "string" },
         ofx_account_id: { type: "string" },
         archived: { type: "boolean" },
+        opening_balance: {
+          type: "string",
+          description: "Opening balance in dollars, before imported history",
+        },
+        opening_balance_date: {
+          type: "string",
+          description: "As-of date (YYYY-MM-DD) for opening balance",
+        },
+        match_bank_balance: {
+          type: "string",
+          description:
+            "Current bank balance in dollars; sets opening = bank − imported transactions",
+        },
       },
       required: ["id", "name"],
     },

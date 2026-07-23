@@ -62,11 +62,23 @@ export function createAccount(input) {
 }
 
 export function updateAccount(id, input) {
-  return budget.updateAccount(Number(id), {
+  const patch = {
     name: input.name,
     ofx_account_id: input.ofx_account_id,
     archived: archivedFrom(input.archived),
-  });
+  };
+  if (input.match_bank_balance !== undefined && input.match_bank_balance !== "") {
+    patch.match_bank_balance = dollarsToCents(input.match_bank_balance);
+  }
+  if (input.opening_balance !== undefined && input.opening_balance !== "") {
+    patch.opening_balance = dollarsToCents(input.opening_balance);
+  } else if (input.opening_balance === "") {
+    patch.opening_balance = 0;
+  }
+  if (input.opening_balance_date !== undefined) {
+    patch.opening_balance_date = input.opening_balance_date || null;
+  }
+  return budget.updateAccount(Number(id), patch);
 }
 
 export function categorizeTransaction(txnId, input) {

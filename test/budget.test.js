@@ -22,6 +22,7 @@ import {
   linkTransactionsAsTransfer,
   listTransferLinkCandidates,
   transferLinkCandidatesByTxnId,
+  updateAccount,
   updateEnvelope,
 } from "../src/services/budget.js";
 
@@ -365,5 +366,30 @@ describe("importBankTxn basics", () => {
       import_id: null,
     });
     expect(r.skipped).toBe(true);
+  });
+});
+
+describe("opening balance", () => {
+  test("match bank balance back-calculates opening", () => {
+    const checking = accountByName("Chequing");
+    importBankTxn({
+      account_id: checking.id,
+      amount: 7500,
+      date: "2026-07-01",
+      payee: "Pay",
+      memo: null,
+      fitid: "OB1",
+      import_id: null,
+    });
+    updateAccount(checking.id, {
+      name: "Chequing",
+      match_bank_balance: 10000,
+      opening_balance_date: "2026-06-30",
+    });
+    const row = accountByName("Chequing");
+    expect(row.opening_balance).toBe(2500);
+    expect(row.opening_balance_date).toBe("2026-06-30");
+    expect(row.balance).toBe(7500);
+    expect(getReady()).toBe(10000);
   });
 });

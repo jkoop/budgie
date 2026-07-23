@@ -265,10 +265,18 @@ export function envelopesPage({ groups, envelopes, flash }) {
 
 export function accountsPage({ accounts, flash }) {
   const rows = accounts
-    .map(
-      (a) => `<tr>
+    .map((a) => {
+      const openingNote =
+        a.opening_balance !== 0
+          ? `<div class="muted">Includes ${formatMoney(a.opening_balance)} opening balance${
+              a.opening_balance_date
+                ? ` as of <span class="date">${escapeHtml(a.opening_balance_date)}</span>`
+                : ""
+            }</div>`
+          : "";
+      return `<tr>
       <td><strong>${escapeHtml(a.name)}</strong>${a.archived ? ' <span class="pill">archived</span>' : ""}</td>
-      <td class="num">${moneySpan(a.balance)}</td>
+      <td class="num">${moneySpan(a.balance)}${openingNote}</td>
       <td class="muted">${escapeHtml(a.ofx_account_id || "—")}</td>
       <td>
         <details>
@@ -276,18 +284,22 @@ export function accountsPage({ accounts, flash }) {
           <form method="post" action="/accounts/${a.id}/update" class="stack" style="margin-top:0.5rem">
             <label>Name<input name="name" value="${escapeHtml(a.name)}" required /></label>
             <label>OFX account id<input name="ofx_account_id" value="${escapeHtml(a.ofx_account_id || "")}" /></label>
+            <label>Opening balance<input name="opening_balance" type="number" step="0.01" value="${a.opening_balance ? (a.opening_balance / 100).toFixed(2) : ""}" placeholder="before imported history" /></label>
+            <label>Opening balance date<input name="opening_balance_date" type="date" value="${escapeHtml(a.opening_balance_date || "")}" /></label>
+            <label>Or match bank balance<input name="match_bank_balance" type="number" step="0.01" placeholder="current balance at bank" /></label>
+            <p class="hint">Effective balance = opening balance + imported transactions. Use “match bank balance” to back-calculate opening from your bank’s current total.</p>
             <label><span><input type="checkbox" name="archived" value="1" ${a.archived ? "checked" : ""}/> Archived</span></label>
             <button type="submit">Save</button>
           </form>
         </details>
       </td>
-    </tr>`
-    )
+    </tr>`;
+    })
     .join("");
 
   const body = `
     <h1>Accounts</h1>
-    <p class="hint">Balances update from <a href="/import">QFX/OFX import</a>. Inter-account transfers are detected from bank memos when both accounts have matching OFX IDs.</p>
+    <p class="hint">Balances = opening balance + <a href="/import">QFX/OFX import</a> activity. On first import, Budgie reads the file’s ledger balance to infer opening when you have not set one manually.</p>
     <div class="panel">
       <table>
         <thead><tr><th>Account</th><th class="num">Balance</th><th>OFX ID</th><th></th></tr></thead>
@@ -681,7 +693,7 @@ export function importPage({ accounts, imports, flash }) {
 
   const body = `
     <h1>Import</h1>
-    <p class="hint">Upload one or more QFX/OFX files. Each file is matched to an account by its OFX account ID. Bank transfers that mention another linked account number (e.g. “transfer to … account 3038552770”) are recorded as transfers — they do not change Ready to Assign. Other inflows and outflows are imported into the ledger; after each file, Ready to Assign is synced to cash in accounts minus envelope balances. Categorize uncategorized outflows in the Ledger when you are ready.</p>
+    <p class="hint">Upload one or more QFX/OFX files. Each file is matched to an account by its OFX account ID. Bank transfers that mention another linked account number (e.g. “transfer to … account 3038552770”) are recorded as transfers — they do not change Ready to Assign. Other inflows and outflows are imported into the ledger. On first import per account, the file’s ledger balance is used to infer an opening balance when you have not set one on the Accounts page. After each file, Ready to Assign is synced to cash in accounts minus envelope balances.</p>
     <div class="panel">
       <form method="post" action="/import" enctype="multipart/form-data" class="stack">
         <label>OFX / QFX files

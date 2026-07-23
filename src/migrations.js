@@ -125,6 +125,16 @@ export const migrations = [
       `);
     },
   },
+  {
+    version: 2,
+    name: "account_opening_balance",
+    up(db) {
+      db.exec(`
+        ALTER TABLE accounts ADD COLUMN opening_balance INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE accounts ADD COLUMN opening_balance_date TEXT;
+      `);
+    },
+  },
 ];
 
 export function getUserVersion(db) {

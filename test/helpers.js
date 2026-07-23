@@ -27,7 +27,7 @@ export function setOfxIds(map) {
   }
 }
 
-export function ofxFile({ accountId, transactions }) {
+export function ofxFile({ accountId, transactions, ledgerBal }) {
   const txns = transactions
     .map(
       (t) => `<STMTTRN>
@@ -40,6 +40,14 @@ ${t.memo != null ? `<MEMO>${t.memo}` : ""}
 </STMTTRN>`
     )
     .join("");
+
+  const ledger =
+    ledgerBal != null
+      ? `<LEDGERBAL>
+<BALAMT>${(ledgerBal.amount / 100).toFixed(2)}
+<DTASOF>${(ledgerBal.date || "2026-07-01").replace(/-/g, "")}
+</LEDGERBAL>`
+      : "";
 
   return `OFXHEADER:100
 DATA:OFXSGML
@@ -60,6 +68,7 @@ NEWFILEUID:NONE
 <ACCTID>${accountId}
 <ACCTTYPE>CHECKING
 </BANKACCTFROM>
+${ledger}
 <BANKTRANLIST>
 ${txns}
 </BANKTRANLIST>

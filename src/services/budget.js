@@ -15,13 +15,22 @@ export function bumpEnvelope(envelopeId, delta) {
   );
 }
 
+function enrichAccount(row) {
+  const txn_balance = row.balance;
+  return {
+    ...row,
+    txn_balance,
+    balance: row.opening_balance + txn_balance,
+  };
+}
+
 export function listAccounts({ includeArchived = false } = {}) {
-  if (includeArchived) {
-    return db.query("SELECT * FROM accounts ORDER BY archived, name").all();
-  }
-  return db
-    .query("SELECT * FROM accounts WHERE archived = 0 ORDER BY name")
-    .all();
+  const rows = includeArchived
+    ? db.query("SELECT * FROM accounts ORDER BY archived, name").all()
+    : db
+        .query("SELECT * FROM accounts WHERE archived = 0 ORDER BY name")
+        .all();
+  return rows.map(enrichAccount);
 }
 
 export function listGroups() {
@@ -68,17 +77,62 @@ export function createAccount(name, ofxAccountId = null) {
   return r.lastInsertRowid;
 }
 
-export function updateAccount(id, { name, ofx_account_id, archived }) {
+export function updateAccount(
+  id,
+  {
+    name,
+    ofx_account_id,
+    archived,
+    opening_balance,
+    opening_balance_date,
+    match_bank_balance,
+  }
+) {
   const row = db.query("SELECT * FROM accounts WHERE id = ?").get(id);
   if (!row) throw new Error("Account not found");
+
+  let nextOpening = row.opening_balance;
+  let nextOpeningDate = row.opening_balance_date;
+
+  if (match_bank_balance !== undefined) {
+    nextOpening = match_bank_balance - row.balance;
+    nextOpeningDate = opening_balance_date ?? row.opening_balance_date ?? todayISO();
+  } else {
+    if (opening_balance !== undefined) nextOpening = opening_balance;
+    if (opening_balance_date !== undefined) {
+      nextOpeningDate = opening_balance_date || null;
+    }
+  }
+
   db.query(
-    "UPDATE accounts SET name = ?, ofx_account_id = ?, archived = ? WHERE id = ?"
+    `UPDATE accounts SET
+      name = ?,
+      ofx_account_id = ?,
+      archived = ?,
+      opening_balance = ?,
+      opening_balance_date = ?
+     WHERE id = ?`
   ).run(
     name ?? row.name,
     ofx_account_id !== undefined ? ofx_account_id || null : row.ofx_account_id,
     archived !== undefined ? (archived ? 1 : 0) : row.archived,
+    nextOpening,
+    nextOpeningDate,
     id
   );
+  reconcileReadyFromAccounts();
+}
+
+/** Set opening balance from OFX LEDGERBAL when not manually configured. */
+export function applyOpeningBalanceFromLedger(accountId, { amount, date }) {
+  const row = db
+    .query("SELECT opening_balance_date, balance FROM accounts WHERE id = ?")
+    .get(accountId);
+  if (!row || row.opening_balance_date != null) return false;
+  db.query(
+    "UPDATE accounts SET opening_balance = ?, opening_balance_date = ? WHERE id = ?"
+  ).run(amount - row.balance, date, accountId);
+  return true;
 }
 
 export function createGroup(name) {
@@ -715,7 +769,9 @@ export function deleteTransaction(id) {
 /** Snap Ready to cash in accounts not held in envelopes (after OFX import). */
 export function reconcileReadyFromAccounts() {
   const accountTotal = db
-    .query("SELECT COALESCE(SUM(balance), 0) AS s FROM accounts WHERE archived = 0")
+    .query(
+      "SELECT COALESCE(SUM(opening_balance + balance), 0) AS s FROM accounts WHERE archived = 0"
+    )
     .get().s;
   const envelopeTotal = db
     .query(
@@ -730,7 +786,9 @@ export function reconcileReadyFromAccounts() {
 export function dashboardStats() {
   const ready = getReady();
   const accountTotal = db
-    .query("SELECT COALESCE(SUM(balance), 0) AS s FROM accounts WHERE archived = 0")
+    .query(
+      "SELECT COALESCE(SUM(opening_balance + balance), 0) AS s FROM accounts WHERE archived = 0"
+    )
     .get().s;
   const envelopeTotal = db
     .query(
