@@ -83,7 +83,7 @@ bun run mcp
 
 **HTTP** — on the running web server at `POST /mcp`.
 
-**Cursor:** `.cursor/mcp.json` configures stdio by default (`budgie`). An HTTP option (`budgie-http`) is also included if you prefer connecting to a running server.
+**Cursor:** The included `.cursor/mcp.json` only configures stdio (`budgie`).
 
 No authentication — use only on trusted networks, same as the web UI.
 
