@@ -1,6 +1,6 @@
 import { dollarsToCents } from "../money.js";
 import { db } from "../db.js";
-import { importBankTxn } from "./budget.js";
+import { importBankTxn, reconcileReadyFromAccounts } from "./budget.js";
 
 /**
  * Minimal SGML/XML OFX/QFX parser for bank statement transactions.
@@ -167,6 +167,8 @@ export function importOfxFile(filename, text) {
       skipped + errors,
       importId
     );
+
+    reconcileReadyFromAccounts();
 
     return {
       importId,

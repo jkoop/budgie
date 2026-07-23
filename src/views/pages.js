@@ -681,7 +681,7 @@ export function importPage({ accounts, imports, flash }) {
 
   const body = `
     <h1>Import</h1>
-    <p class="hint">Upload one or more QFX/OFX files. Each file is matched to an account by its OFX account ID. Bank transfers that mention another linked account number (e.g. “transfer to … account 3038552770”) are recorded as transfers — they do not change Ready to Assign. Other inflows go to Ready; other outflows stay uncategorized until you assign an envelope.</p>
+    <p class="hint">Upload one or more QFX/OFX files. Each file is matched to an account by its OFX account ID. Bank transfers that mention another linked account number (e.g. “transfer to … account 3038552770”) are recorded as transfers — they do not change Ready to Assign. Other inflows and outflows are imported into the ledger; after each file, Ready to Assign is synced to cash in accounts minus envelope balances. Categorize uncategorized outflows in the Ledger when you are ready.</p>
     <div class="panel">
       <form method="post" action="/import" enctype="multipart/form-data" class="stack">
         <label>OFX / QFX files

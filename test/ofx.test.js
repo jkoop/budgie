@@ -148,7 +148,7 @@ describe("importOfxFile", () => {
     expect(again.skipped).toBe(1);
   });
 
-  test("inflows go to Ready; outflows stay uncategorized", () => {
+  test("inflows and outflows reconcile Ready to account balance", () => {
     setOfxIds({ Chequing: "111" });
     const text = ofxFile({
       accountId: "111",
@@ -158,7 +158,8 @@ describe("importOfxFile", () => {
       ],
     });
     importOfxFile("mix.ofx", text);
-    expect(getReady()).toBe(10000);
+    expect(getReady()).toBe(7500);
+    expect(accountByName("Chequing").balance).toBe(7500);
     const uncat = listTransactions({ uncategorized: true });
     expect(uncat).toHaveLength(1);
     expect(uncat[0].payee).toBe("Shop");
@@ -188,7 +189,7 @@ describe("importOfxFile", () => {
     const result = importOfxFile("xfer.ofx", text);
     expect(result.transfers).toBe(1);
     expect(result.added).toBe(2);
-    expect(getReady()).toBe(0);
+    expect(getReady()).toBe(-2500);
     expect(accountByName("Chequing").balance).toBe(-172500);
     expect(accountByName("Savings").balance).toBe(170000);
 

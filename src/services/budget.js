@@ -712,6 +712,21 @@ export function deleteTransaction(id) {
   db.query("DELETE FROM transactions WHERE id = ?").run(id);
 }
 
+/** Snap Ready to cash in accounts not held in envelopes (after OFX import). */
+export function reconcileReadyFromAccounts() {
+  const accountTotal = db
+    .query("SELECT COALESCE(SUM(balance), 0) AS s FROM accounts WHERE archived = 0")
+    .get().s;
+  const envelopeTotal = db
+    .query(
+      "SELECT COALESCE(SUM(balance), 0) AS s FROM envelopes WHERE archived = 0"
+    )
+    .get().s;
+  const ready = accountTotal - envelopeTotal;
+  db.query("UPDATE budget_meta SET ready_to_assign = ? WHERE id = 1").run(ready);
+  return ready;
+}
+
 export function dashboardStats() {
   const ready = getReady();
   const accountTotal = db
