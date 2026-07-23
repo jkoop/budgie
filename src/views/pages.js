@@ -346,7 +346,8 @@ function linkTransferFormHtml(txnId, candidates) {
 function transactionRowHtml(
   t,
   envelopeOptionsHtml = "",
-  candidates = []
+  candidates = [],
+  { oob = false } = {}
 ) {
   const needsCat = t.kind === "expense" && !t.envelope_id;
   let cat;
@@ -374,7 +375,8 @@ function transactionRowHtml(
         (t.kind === "income" && !t.envelope_id ? "Ready" : t.kind)
     );
   }
-  return `<tr>
+  const oobAttr = oob ? ' hx-swap-oob="true"' : "";
+  return `<tr id="txn-${t.id}"${oobAttr}>
         <td class="date">${escapeHtml(t.date)}</td>
         <td>${escapeHtml(t.account_name || "—")}</td>
         <td>${escapeHtml(t.payee || "")}${t.memo ? `<div class="muted">${escapeHtml(t.memo)}</div>` : ""}
@@ -418,6 +420,17 @@ export function ledgerTransactionRowPartial(
     transaction,
     envelopeOptionsHtml,
     transferCandidates
+  );
+}
+
+/** HTMX partial: linked transfer row + OOB update for the paired leg. */
+export function ledgerTransferLinkHtmxRows(primaryTxn, otherTxn, envelopes) {
+  const envelopeOptionsHtml = selectOptions(envelopes, null, {
+    empty: "Categorize…",
+  });
+  return (
+    ledgerTransactionRowPartial(primaryTxn, envelopes) +
+    transactionRowHtml(otherTxn, envelopeOptionsHtml, [], { oob: true })
   );
 }
 

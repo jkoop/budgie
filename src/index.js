@@ -22,6 +22,7 @@ import {
   ledgerPage,
   ledgerRowsPartial,
   ledgerTransactionRowPartial,
+  ledgerTransferLinkHtmxRows,
   schedulesPage,
   TXN_PAGE_SIZE,
 } from "./views/pages.js";
@@ -49,6 +50,21 @@ function ledgerTxnRowHtmxOrRedirect(req, txnId, flash) {
       return html("");
     }
     return ledgerTxnRowHtmxResponse(txnId);
+  }
+  return redirect(req.headers.get("referer") || "/ledger", flash);
+}
+
+function ledgerTransferLinkHtmxOrRedirect(req, txnId, otherTxnId, flash) {
+  if (isHtmx(req)) {
+    const referer = req.headers.get("referer") || "";
+    if (referer.includes("uncategorized=1")) {
+      return html("");
+    }
+    const txn = budget.getLedgerTransaction(txnId);
+    const other = budget.getLedgerTransaction(otherTxnId);
+    return html(
+      ledgerTransferLinkHtmxRows(txn, other, budget.listEnvelopes())
+    );
   }
   return redirect(req.headers.get("referer") || "/ledger", flash);
 }
@@ -325,8 +341,9 @@ async function handle(req) {
       const linkXfer = path.match(/^\/ledger\/(\d+)\/link-transfer$/);
       if (linkXfer) {
         const txnId = Number(linkXfer[1]);
-        budget.linkTransactionsAsTransfer(txnId, Number(data.other_id));
-        return ledgerTxnRowHtmxOrRedirect(req, txnId, {
+        const otherTxnId = Number(data.other_id);
+        budget.linkTransactionsAsTransfer(txnId, otherTxnId);
+        return ledgerTransferLinkHtmxOrRedirect(req, txnId, otherTxnId, {
           type: "success",
           message: "Linked as transfer",
         });

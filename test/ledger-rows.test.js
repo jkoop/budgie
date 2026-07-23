@@ -9,9 +9,14 @@ import {
 import { selectOptions } from "../src/views/layout.js";
 import {
   ledgerRowsPartial,
+  ledgerTransferLinkHtmxRows,
   TXN_PAGE_SIZE,
   transactionRowsHtml,
 } from "../src/views/pages.js";
+import {
+  getLedgerTransaction,
+  linkTransactionsAsTransfer,
+} from "../src/services/budget.js";
 
 useCleanDb();
 
@@ -45,6 +50,74 @@ describe("ledger HTMX chunks", () => {
     expect(html).toContain('hx-post="/ledger/');
     expect(html).toContain('hx-target="closest tr"');
     expect(html).toContain("Deposit");
+  });
+
+  test("linked transfers show transfer label without link form", () => {
+    const checking = accountByName("Chequing");
+    const savings = accountByName("Savings");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -3000,
+      date: "2026-07-01",
+      payee: "Withdrawal",
+      memo: null,
+      fitid: "L3",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 3000,
+      date: "2026-07-01",
+      payee: "Deposit",
+      memo: null,
+      fitid: "L4",
+      import_id: null,
+    });
+    const out = listTransactions({ account_id: checking.id })[0];
+    const inn = listTransactions({ account_id: savings.id })[0];
+    linkTransactionsAsTransfer(out.id, inn.id);
+
+    const txns = listTransactions({ limit: 10 });
+    const html = transactionRowsHtml(txns, "");
+    expect(html).toContain("Transfer ↔");
+    expect(html).not.toContain("Link as transfer");
+    expect(html).not.toContain("/link-transfer");
+  });
+
+  test("ledgerTransferLinkHtmxRows updates paired row via OOB swap", () => {
+    const checking = accountByName("Chequing");
+    const savings = accountByName("Savings");
+    importBankTxn({
+      account_id: checking.id,
+      amount: -3000,
+      date: "2026-07-01",
+      payee: "Withdrawal",
+      memo: null,
+      fitid: "L5",
+      import_id: null,
+    });
+    importBankTxn({
+      account_id: savings.id,
+      amount: 3000,
+      date: "2026-07-01",
+      payee: "Deposit",
+      memo: null,
+      fitid: "L6",
+      import_id: null,
+    });
+    const out = listTransactions({ account_id: checking.id })[0];
+    const inn = listTransactions({ account_id: savings.id })[0];
+    linkTransactionsAsTransfer(out.id, inn.id);
+
+    const html = ledgerTransferLinkHtmxRows(
+      getLedgerTransaction(out.id),
+      getLedgerTransaction(inn.id),
+      listEnvelopes()
+    );
+    expect(html).toContain(`id="txn-${out.id}"`);
+    expect(html).toContain(`id="txn-${inn.id}" hx-swap-oob="true"`);
+    expect(html).toContain("Transfer ↔");
+    expect(html).not.toContain("Link as transfer");
   });
 
   test("transactionRowsHtml renders categorize controls for uncategorized", () => {
