@@ -1,6 +1,6 @@
 ---
 description: GUI ↔ MCP capability parity — keep HTML UI and MCP tools in sync
-globs: src/index.js,src/actions.js,src/capabilities.js,src/mcp/**
+globs: src/index.js,src/writes.js,src/capabilities.js,src/mcp/**
 alwaysApply: false
 ---
 
@@ -16,14 +16,13 @@ Budgie exposes the same user-facing capabilities through the **HTML GUI** and **
 - `kind` — `"read"` or `"write"`
 - `gui` — `{ method, path }` matching the route in `index.js`
 - `mcpTool` — tool name in `src/mcp/tools.js`
-- `skipTick` (optional) — only `list_transactions` skips schedule tick
 
 ## Adding a feature
 
 When adding any user-facing action:
 
 1. Add an entry to `src/capabilities.js`
-2. Add mutation logic to `src/actions.js` (writes)
+2. Add mutation logic to `src/writes.js` (writes)
 3. Add HTTP route in `src/index.js` (GUI)
 4. Add MCP tool definition + handler in `src/mcp/tools.js`
 5. Run `bun test test/mcp-parity.test.js`
@@ -32,10 +31,10 @@ When adding any user-facing action:
 
 - **No GUI-only mutations** — every `POST` route must have a matching MCP write tool
 - **No MCP-only mutations** — do not expose service functions via MCP unless the GUI also exposes them
-- **Shared write path** — HTTP POST handlers call `actions.*`; MCP tools call the same functions
-- **Money at boundary** — `dollarsToCents()` in HTTP/MCP layers only; services use integer cents
-- **Cadence** — use `parseCadenceFields()` (HTTP) or equivalent JSON args (MCP)
-- **Schedule tick** — `maybeTick()` on HTTP page loads (skip `/ledger/rows`); MCP calls `maybeTick()` before every tool except `list_transactions`
+- **Shared write path** — HTTP POST handlers and MCP write tools call `writes.*` with the same input shape (form fields or JSON args)
+- **Money at boundary** — `dollarsToCents()` in `writes.js` only; services use integer cents
+- **Cadence** — `parseCadenceFields()` in `writes.js` for schedule/goal inputs
+- **Schedule tick** — `maybeTick()` on HTTP page loads (skip `/ledger/rows`); MCP read tools call `maybeTick()`, write tools do not
 - **Bank transactions** — enter only via OFX/QFX import (GUI upload or `import_ofx` tool)
 
 ## Excluded (internal only)

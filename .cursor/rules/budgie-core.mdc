@@ -12,7 +12,7 @@ Single-user envelope budgeting app. **Bun + SQLite**, zero npm deps, **no build 
 ## Architecture
 
 - `src/index.js` — inline URL routing only; thin handlers.
-- `src/actions.js` — shared mutations for GUI POST and MCP write tools.
+- `src/writes.js` — shared write parsers for GUI POST and MCP write tools.
 - `src/capabilities.js` — GUI ↔ MCP parity manifest.
 - `src/mcp/` — MCP server (`dispatch.js`, `tools.js`, `stdio.js`, `http.js`)
 - `src/mcp.js` — stdio MCP entry (`bun run src/mcp.js`).
@@ -32,7 +32,7 @@ Do **not** introduce Express/Fastify routers, React/Vue, REST/JSON endpoints, we
 
 ## Side effects
 
-- Most GETs call `schedules.tick()` via `maybeTick()` in `tick.js` (debounced) and **mutate the DB**. `/ledger/rows` and MCP `list_transactions` skip tick.
+- Most GETs call `schedules.tick()` via `maybeTick()` in `tick.js` (debounced) and **mutate the DB**. `/ledger/rows` skips tick. MCP read tools also call `maybeTick()`.
 - POST handlers use **PRG**: `redirect(path, { type, message })`, never render POST responses.
 
 ## Dependencies

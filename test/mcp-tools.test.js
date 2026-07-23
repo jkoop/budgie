@@ -1,15 +1,28 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { useCleanDb, setOfxIds, ofxFile, accountByName } from "./helpers.js";
+import { getReady } from "../src/db.js";
+import { todayISO } from "../src/money.js";
 import { callTool } from "../src/mcp/tools.js";
 import { resetTickDebounce } from "../src/tick.js";
 import * as budget from "../src/services/budget.js";
-import { getReady } from "../src/db.js";
+import { createIncomeSchedule } from "../src/services/schedules.js";
 
 useCleanDb();
 
 beforeEach(() => {
   resetTickDebounce();
 });
+
+function dueIncomeSchedule(amount = 5000) {
+  createIncomeSchedule({
+    name: "Pay",
+    amount,
+    account_id: accountByName("Chequing").id,
+    payee: "Work",
+    cadence_kind: "weekly",
+    next_date: todayISO(),
+  });
+}
 
 describe("MCP tools", () => {
   test("get_dashboard returns stats", () => {
@@ -18,6 +31,21 @@ describe("MCP tools", () => {
     const data = JSON.parse(result.content[0].text);
     expect(data.stats).toBeDefined();
     expect(typeof data.stats.ready).toBe("number");
+  });
+
+  test("read tools trigger schedule tick", () => {
+    dueIncomeSchedule();
+    resetTickDebounce();
+    expect(getReady()).toBe(0);
+    callTool("list_transactions", {});
+    expect(getReady()).toBe(5000);
+  });
+
+  test("write tools do not trigger schedule tick", () => {
+    dueIncomeSchedule();
+    resetTickDebounce();
+    callTool("create_account", { name: "No Tick Account" });
+    expect(getReady()).toBe(0);
   });
 
   test("create_account and list_accounts", () => {

@@ -9,6 +9,10 @@ const indexSource = readFileSync(
   "utf8"
 );
 
+const READ_TOOLS = new Set(
+  CAPABILITIES.filter((c) => c.kind === "read").map((c) => c.mcpTool)
+);
+
 describe("MCP parity manifest", () => {
   test("every capability has a unique id and mcpTool", () => {
     const ids = CAPABILITIES.map((c) => c.id);
@@ -45,10 +49,16 @@ describe("MCP parity manifest", () => {
     }
   });
 
-  test("list_transactions is the only tool that skips tick", () => {
-    const skipTools = CAPABILITIES.filter((c) => c.skipTick).map(
+  test("read and write capabilities are disjoint", () => {
+    const reads = CAPABILITIES.filter((c) => c.kind === "read").map(
       (c) => c.mcpTool
     );
-    expect(skipTools).toEqual(["list_transactions"]);
+    const writes = CAPABILITIES.filter((c) => c.kind === "write").map(
+      (c) => c.mcpTool
+    );
+    for (const tool of reads) {
+      expect(writes).not.toContain(tool);
+    }
+    expect(READ_TOOLS.size).toBe(reads.length);
   });
 });

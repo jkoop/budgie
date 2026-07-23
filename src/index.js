@@ -1,10 +1,8 @@
 import { migrate } from "./db.js";
-import { dollarsToCents } from "./money.js";
 import {
   html,
   isHtmx,
   parseBody,
-  parseCadenceFields,
   publicFile,
   readFlash,
   redirect,
@@ -13,7 +11,7 @@ import * as budget from "./services/budget.js";
 import * as schedules from "./services/schedules.js";
 import * as goals from "./services/goals.js";
 import { listImports } from "./services/ofx.js";
-import * as actions from "./actions.js";
+import * as writes from "./writes.js";
 import { maybeTick } from "./tick.js";
 import { handleMcpRequest } from "./mcp/http.js";
 import {
@@ -232,15 +230,7 @@ export async function handle(req) {
 
       // Envelopes
       if (path === "/envelopes") {
-        const target = data.target_amount
-          ? dollarsToCents(data.target_amount)
-          : null;
-        actions.createEnvelope({
-          name: data.name,
-          groupId: data.group_id ? Number(data.group_id) : null,
-          targetAmountCents: target || null,
-          targetDate: data.target_date || null,
-        });
+        writes.createEnvelope(data);
         return redirect("/envelopes", {
           type: "success",
           message: "Envelope created",
@@ -248,7 +238,7 @@ export async function handle(req) {
       }
 
       if (path === "/envelope-groups") {
-        actions.createEnvelopeGroup({ name: data.name });
+        writes.createEnvelopeGroup(data);
         return redirect("/envelopes", {
           type: "success",
           message: "Group created",
@@ -256,10 +246,7 @@ export async function handle(req) {
       }
 
       if (path === "/envelopes/assign") {
-        actions.assignToEnvelope({
-          envelopeId: Number(data.envelope_id),
-          amountCents: dollarsToCents(data.amount),
-        });
+        writes.assignToEnvelope(data);
         const dest = req.headers.get("referer")?.includes("/envelopes")
           ? "/envelopes"
           : "/";
@@ -270,11 +257,7 @@ export async function handle(req) {
       }
 
       if (path === "/envelopes/move") {
-        actions.moveBetweenEnvelopes({
-          fromId: Number(data.from_id),
-          toId: Number(data.to_id),
-          amountCents: dollarsToCents(data.amount),
-        });
+        writes.moveBetweenEnvelopes(data);
         return redirect("/envelopes", {
           type: "success",
           message: "Moved between envelopes",
@@ -282,7 +265,7 @@ export async function handle(req) {
       }
 
       if (path === "/envelopes/cover") {
-        actions.coverOverspend({ envelopeId: Number(data.envelope_id) });
+        writes.coverOverspend(data);
         return redirect("/envelopes", {
           type: "success",
           message: "Covered overspend from Ready",
@@ -291,16 +274,7 @@ export async function handle(req) {
 
       const envUpdate = path.match(/^\/envelopes\/(\d+)\/update$/);
       if (envUpdate) {
-        const targetRaw = (data.target_amount || "").trim();
-        actions.updateEnvelope({
-          id: Number(envUpdate[1]),
-          name: data.name,
-          groupId: data.group_id ? Number(data.group_id) : null,
-          targetAmountCents:
-            targetRaw === "" ? null : dollarsToCents(targetRaw),
-          targetDate: data.target_date || null,
-          archived: data.archived === "1",
-        });
+        writes.updateEnvelope(envUpdate[1], data);
         return redirect("/envelopes", {
           type: "success",
           message: "Envelope updated",
@@ -309,10 +283,7 @@ export async function handle(req) {
 
       // Accounts
       if (path === "/accounts") {
-        actions.createAccount({
-          name: data.name,
-          ofxAccountId: data.ofx_account_id || null,
-        });
+        writes.createAccount(data);
         return redirect("/accounts", {
           type: "success",
           message: "Account created",
@@ -321,12 +292,7 @@ export async function handle(req) {
 
       const acctUpdate = path.match(/^\/accounts\/(\d+)\/update$/);
       if (acctUpdate) {
-        actions.updateAccount({
-          id: Number(acctUpdate[1]),
-          name: data.name,
-          ofxAccountId: data.ofx_account_id,
-          archived: data.archived === "1",
-        });
+        writes.updateAccount(acctUpdate[1], data);
         return redirect("/accounts", {
           type: "success",
           message: "Account updated",
@@ -337,10 +303,7 @@ export async function handle(req) {
       const categorize = path.match(/^\/ledger\/(\d+)\/categorize$/);
       if (categorize) {
         const txnId = Number(categorize[1]);
-        actions.categorizeTransaction({
-          transactionId: txnId,
-          envelopeId: Number(data.envelope_id),
-        });
+        writes.categorizeTransaction(txnId, data);
         return ledgerTxnRowHtmxOrRedirect(req, txnId, {
           type: "success",
           message: "Categorized",
@@ -351,10 +314,7 @@ export async function handle(req) {
       if (linkXfer) {
         const txnId = Number(linkXfer[1]);
         const otherTxnId = Number(data.other_id);
-        actions.linkTransfer({
-          transactionId: txnId,
-          otherTransactionId: otherTxnId,
-        });
+        writes.linkTransfer(txnId, data);
         return ledgerTransferLinkHtmxOrRedirect(req, txnId, otherTxnId, {
           type: "success",
           message: "Linked as transfer",
@@ -363,7 +323,7 @@ export async function handle(req) {
 
       const delTxn = path.match(/^\/ledger\/(\d+)\/delete$/);
       if (delTxn) {
-        actions.deleteTransaction({ transactionId: Number(delTxn[1]) });
+        writes.deleteTransaction(delTxn[1]);
         return redirect("/ledger", {
           type: "success",
           message: "Transaction deleted",
@@ -372,18 +332,7 @@ export async function handle(req) {
 
       // Goals
       if (path === "/goals") {
-        const auto = data.auto_amount ? dollarsToCents(data.auto_amount) : null;
-        const cadence = auto ? parseCadenceFields(data) : null;
-        actions.createGoal({
-          name: data.name,
-          targetAmountCents: dollarsToCents(data.target_amount),
-          targetDate: data.target_date || null,
-          sourceEnvelopeId: data.source_envelope_id
-            ? Number(data.source_envelope_id)
-            : null,
-          autoAmountCents: auto,
-          cadence,
-        });
+        writes.createGoal(data);
         return redirect("/goals", {
           type: "success",
           message: "Goal created",
@@ -392,10 +341,7 @@ export async function handle(req) {
 
       const fundGoal = path.match(/^\/goals\/(\d+)\/fund$/);
       if (fundGoal) {
-        actions.fundGoal({
-          goalId: Number(fundGoal[1]),
-          amountCents: dollarsToCents(data.amount),
-        });
+        writes.fundGoal(fundGoal[1], data);
         return redirect("/goals", {
           type: "success",
           message: "Goal funded",
@@ -404,7 +350,7 @@ export async function handle(req) {
 
       const delGoal = path.match(/^\/goals\/(\d+)\/delete$/);
       if (delGoal) {
-        actions.deleteGoal({ goalId: Number(delGoal[1]) });
+        writes.deleteGoal(delGoal[1]);
         return redirect("/goals", {
           type: "success",
           message: "Goal deleted",
@@ -413,13 +359,7 @@ export async function handle(req) {
 
       // Schedules
       if (path === "/schedules/income") {
-        actions.createIncomeSchedule({
-          name: data.name,
-          amountCents: dollarsToCents(data.amount),
-          accountId: Number(data.account_id),
-          payee: data.payee || data.name,
-          cadence: parseCadenceFields(data),
-        });
+        writes.createIncomeSchedule(data);
         return redirect("/schedules", {
           type: "success",
           message: "Income schedule created",
@@ -427,11 +367,7 @@ export async function handle(req) {
       }
 
       if (path === "/schedules/allowance") {
-        actions.createAllowanceRule({
-          envelopeId: Number(data.envelope_id),
-          amountCents: dollarsToCents(data.amount),
-          cadence: parseCadenceFields(data),
-        });
+        writes.createAllowanceRule(data);
         return redirect("/schedules", {
           type: "success",
           message: "Allowance created",
@@ -440,13 +376,13 @@ export async function handle(req) {
 
       const incToggle = path.match(/^\/schedules\/income\/(\d+)\/toggle$/);
       if (incToggle) {
-        actions.toggleIncomeSchedule({ scheduleId: Number(incToggle[1]) });
+        writes.toggleIncomeSchedule(incToggle[1]);
         return redirect("/schedules");
       }
 
       const incDel = path.match(/^\/schedules\/income\/(\d+)\/delete$/);
       if (incDel) {
-        actions.deleteIncomeSchedule({ scheduleId: Number(incDel[1]) });
+        writes.deleteIncomeSchedule(incDel[1]);
         return redirect("/schedules", {
           type: "success",
           message: "Income schedule deleted",
@@ -455,13 +391,13 @@ export async function handle(req) {
 
       const allToggle = path.match(/^\/schedules\/allowance\/(\d+)\/toggle$/);
       if (allToggle) {
-        actions.toggleAllowanceRule({ ruleId: Number(allToggle[1]) });
+        writes.toggleAllowanceRule(allToggle[1]);
         return redirect("/schedules");
       }
 
       const allDel = path.match(/^\/schedules\/allowance\/(\d+)\/delete$/);
       if (allDel) {
-        actions.deleteAllowanceRule({ ruleId: Number(allDel[1]) });
+        writes.deleteAllowanceRule(allDel[1]);
         return redirect("/schedules", {
           type: "success",
           message: "Allowance deleted",
@@ -480,7 +416,7 @@ export async function handle(req) {
             content: await upload.text(),
           });
         }
-        const { results, failures } = actions.importOfxBatch(filePayloads);
+        const { results, failures } = writes.importOfxBatch(filePayloads);
 
         const added = results.reduce((s, r) => s + r.added, 0);
         const skipped = results.reduce((s, r) => s + r.skipped, 0);

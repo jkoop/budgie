@@ -1,16 +1,14 @@
 import { CAPABILITIES } from "../capabilities.js";
-import { dollarsToCents } from "../money.js";
-import { parseCadenceFields } from "../http.js";
 import { maybeTick } from "../tick.js";
-import * as actions from "../actions.js";
+import * as writes from "../writes.js";
 import * as budget from "../services/budget.js";
 import * as schedules from "../services/schedules.js";
 import * as goals from "../services/goals.js";
 import { listImports } from "../services/ofx.js";
 import { TXN_PAGE_SIZE } from "../views/pages.js";
 
-const SKIP_TICK = new Set(
-  CAPABILITIES.filter((c) => c.skipTick).map((c) => c.mcpTool)
+const READ_TOOLS = new Set(
+  CAPABILITIES.filter((c) => c.kind === "read").map((c) => c.mcpTool)
 );
 
 const TOOL_DEFINITIONS = [
@@ -38,7 +36,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "list_transactions",
     description:
-      "List ledger transactions with optional filters and pagination. Does not trigger schedule tick.",
+      "List ledger transactions with optional filters and pagination.",
     inputSchema: {
       type: "object",
       properties: {
@@ -425,124 +423,47 @@ function handleTool(name, args) {
       return { transaction: txn };
     }
     case "create_envelope":
-      return actions.createEnvelope({
-        name: args.name,
-        groupId: args.group_id ? Number(args.group_id) : null,
-        targetAmountCents: args.target_amount
-          ? dollarsToCents(args.target_amount)
-          : null,
-        targetDate: args.target_date || null,
-      });
+      return writes.createEnvelope(args);
     case "create_envelope_group":
-      return actions.createEnvelopeGroup({ name: args.name });
+      return writes.createEnvelopeGroup(args);
     case "assign_to_envelope":
-      return actions.assignToEnvelope({
-        envelopeId: Number(args.envelope_id),
-        amountCents: dollarsToCents(args.amount),
-      });
+      return writes.assignToEnvelope(args);
     case "move_between_envelopes":
-      return actions.moveBetweenEnvelopes({
-        fromId: Number(args.from_id),
-        toId: Number(args.to_id),
-        amountCents: dollarsToCents(args.amount),
-      });
+      return writes.moveBetweenEnvelopes(args);
     case "cover_overspend":
-      return actions.coverOverspend({ envelopeId: Number(args.envelope_id) });
-    case "update_envelope": {
-      const targetRaw = (args.target_amount ?? "").trim();
-      return actions.updateEnvelope({
-        id: Number(args.id),
-        name: args.name,
-        groupId: args.group_id ? Number(args.group_id) : null,
-        targetAmountCents:
-          targetRaw === "" ? null : dollarsToCents(targetRaw),
-        targetDate: args.target_date || null,
-        archived: Boolean(args.archived),
-      });
-    }
+      return writes.coverOverspend(args);
+    case "update_envelope":
+      return writes.updateEnvelope(args.id, args);
     case "create_account":
-      return actions.createAccount({
-        name: args.name,
-        ofxAccountId: args.ofx_account_id || null,
-      });
+      return writes.createAccount(args);
     case "update_account":
-      return actions.updateAccount({
-        id: Number(args.id),
-        name: args.name,
-        ofxAccountId: args.ofx_account_id,
-        archived: Boolean(args.archived),
-      });
+      return writes.updateAccount(args.id, args);
     case "categorize_transaction":
-      return actions.categorizeTransaction({
-        transactionId: Number(args.transaction_id),
-        envelopeId: Number(args.envelope_id),
-      });
+      return writes.categorizeTransaction(args.transaction_id, args);
     case "link_transfer":
-      return actions.linkTransfer({
-        transactionId: Number(args.transaction_id),
-        otherTransactionId: Number(args.other_transaction_id),
-      });
+      return writes.linkTransfer(args.transaction_id, args);
     case "delete_transaction":
-      return actions.deleteTransaction({
-        transactionId: Number(args.transaction_id),
-      });
-    case "create_goal": {
-      const auto = args.auto_amount ? dollarsToCents(args.auto_amount) : null;
-      const cadence = auto ? parseCadenceFields(args) : null;
-      return actions.createGoal({
-        name: args.name,
-        targetAmountCents: dollarsToCents(args.target_amount),
-        targetDate: args.target_date || null,
-        sourceEnvelopeId: args.source_envelope_id
-          ? Number(args.source_envelope_id)
-          : null,
-        autoAmountCents: auto,
-        cadence,
-      });
-    }
+      return writes.deleteTransaction(args.transaction_id);
+    case "create_goal":
+      return writes.createGoal(args);
     case "fund_goal":
-      return actions.fundGoal({
-        goalId: Number(args.goal_id),
-        amountCents: dollarsToCents(args.amount),
-      });
+      return writes.fundGoal(args.goal_id, args);
     case "delete_goal":
-      return actions.deleteGoal({ goalId: Number(args.goal_id) });
+      return writes.deleteGoal(args.goal_id);
     case "create_income_schedule":
-      return actions.createIncomeSchedule({
-        name: args.name,
-        amountCents: dollarsToCents(args.amount),
-        accountId: Number(args.account_id),
-        payee: args.payee || args.name,
-        cadence: parseCadenceFields(args),
-      });
+      return writes.createIncomeSchedule(args);
     case "create_allowance_rule":
-      return actions.createAllowanceRule({
-        envelopeId: Number(args.envelope_id),
-        amountCents: dollarsToCents(args.amount),
-        cadence: parseCadenceFields(args),
-      });
+      return writes.createAllowanceRule(args);
     case "toggle_income_schedule":
-      return actions.toggleIncomeSchedule({
-        scheduleId: Number(args.schedule_id),
-      });
+      return writes.toggleIncomeSchedule(args.schedule_id);
     case "delete_income_schedule":
-      return actions.deleteIncomeSchedule({
-        scheduleId: Number(args.schedule_id),
-      });
+      return writes.deleteIncomeSchedule(args.schedule_id);
     case "toggle_allowance_rule":
-      return actions.toggleAllowanceRule({ ruleId: Number(args.rule_id) });
+      return writes.toggleAllowanceRule(args.rule_id);
     case "delete_allowance_rule":
-      return actions.deleteAllowanceRule({ ruleId: Number(args.rule_id) });
-    case "import_ofx": {
-      const { results, failures } = actions.importOfxBatch([
-        {
-          filename: args.filename || "upload.ofx",
-          content: args.content,
-        },
-      ]);
-      if (failures.length) throw new Error(failures[0].message);
-      return results[0];
-    }
+      return writes.deleteAllowanceRule(args.rule_id);
+    case "import_ofx":
+      return writes.importOfx(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -550,7 +471,7 @@ function handleTool(name, args) {
 
 export function callTool(name, args = {}) {
   try {
-    maybeTick({ skip: SKIP_TICK.has(name) });
+    if (READ_TOOLS.has(name)) maybeTick();
     const result = handleTool(name, args);
     return {
       content: [{ type: "text", text: JSON.stringify(result) }],

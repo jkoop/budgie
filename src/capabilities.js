@@ -27,7 +27,6 @@ export const CAPABILITIES = [
     kind: "read",
     gui: { method: "GET", path: "/ledger" },
     mcpTool: "list_transactions",
-    skipTick: true,
   },
   {
     id: "list_transfer_link_candidates",
