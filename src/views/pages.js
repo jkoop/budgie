@@ -268,15 +268,15 @@ export function accountsPage({ accounts, flash }) {
     .map((a) => {
       const openingNote =
         a.opening_balance !== 0
-          ? `<div class="muted">Includes ${formatMoney(a.opening_balance)} opening balance${
+          ? `<div class="opening-note">Includes ${formatMoney(a.opening_balance)} opening balance${
               a.opening_balance_date
-                ? ` as of <span class="date">${escapeHtml(a.opening_balance_date)}</span>`
+                ? ` as of ${escapeHtml(a.opening_balance_date)}`
                 : ""
             }</div>`
           : "";
       return `<tr>
       <td><strong>${escapeHtml(a.name)}</strong>${a.archived ? ' <span class="pill">archived</span>' : ""}</td>
-      <td class="num">${moneySpan(a.balance)}${openingNote}</td>
+      <td class="num num-stacked"><div class="account-balance">${moneySpan(a.balance)}</div>${openingNote}</td>
       <td class="muted">${escapeHtml(a.ofx_account_id || "—")}</td>
       <td>
         <details>

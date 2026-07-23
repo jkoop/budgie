@@ -265,6 +265,26 @@ th.num {
   white-space: nowrap;
 }
 
+td.num.num-stacked {
+  white-space: normal;
+  font-family: var(--font);
+}
+
+td.num.num-stacked .account-balance {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.opening-note {
+  font-family: var(--font);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--muted);
+  margin-top: 0.2rem;
+  white-space: normal;
+  font-weight: normal;
+}
+
 .date,
 td.date,
 th.date {
