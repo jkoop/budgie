@@ -1,19 +1,18 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { useCleanDb } from "./helpers.js";
+import { CAPABILITIES } from "../src/capabilities.js";
 import { handleMcpMessage, writeMcpMessage } from "../src/mcp/stdio.js";
-import { clearMcpSessions } from "../src/mcp/dispatch.js";
 import { resetTickDebounce } from "../src/tick.js";
 
 useCleanDb();
 
 beforeEach(() => {
-  clearMcpSessions();
   resetTickDebounce();
 });
 
 describe("MCP stdio transport", () => {
   test("handleMcpMessage initialize returns capabilities", async () => {
-    const body = await handleMcpMessage({
+    const { body, sessionId } = await handleMcpMessage({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
@@ -23,30 +22,32 @@ describe("MCP stdio transport", () => {
         clientInfo: { name: "test", version: "1.0.0" },
       },
     });
+    expect(sessionId).toBeTruthy();
     expect(body.result.protocolVersion).toBe("2025-11-25");
     expect(body.result.capabilities.tools).toBeDefined();
   });
 
-  test("notifications/initialized returns null", async () => {
-    const body = await handleMcpMessage({
+  test("notifications/initialized returns notification", async () => {
+    const result = await handleMcpMessage({
       jsonrpc: "2.0",
       method: "notifications/initialized",
     });
-    expect(body).toBeNull();
+    expect(result.notification).toBe(true);
+    expect(result.body).toBeUndefined();
   });
 
   test("tools/list returns all tools", async () => {
-    const body = await handleMcpMessage({
+    const { body } = await handleMcpMessage({
       jsonrpc: "2.0",
       id: 2,
       method: "tools/list",
       params: {},
     });
-    expect(body.result.tools.length).toBe(30);
+    expect(body.result.tools.length).toBe(CAPABILITIES.length);
   });
 
   test("tools/call get_dashboard", async () => {
-    const body = await handleMcpMessage({
+    const { body } = await handleMcpMessage({
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
@@ -64,7 +65,7 @@ describe("MCP stdio transport", () => {
   });
 
   test("invalid message returns error", async () => {
-    const body = await handleMcpMessage({ jsonrpc: "1.0" });
+    const { body } = await handleMcpMessage({ jsonrpc: "1.0" });
     expect(body.error).toBeDefined();
   });
 });

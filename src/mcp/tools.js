@@ -1,5 +1,5 @@
 import { CAPABILITIES } from "../capabilities.js";
-import { dollarsToCents, todayISO } from "../money.js";
+import { dollarsToCents } from "../money.js";
 import { parseCadenceFields } from "../http.js";
 import { maybeTick } from "../tick.js";
 import * as actions from "../actions.js";
@@ -12,15 +12,6 @@ import { TXN_PAGE_SIZE } from "../views/pages.js";
 const SKIP_TICK = new Set(
   CAPABILITIES.filter((c) => c.skipTick).map((c) => c.mcpTool)
 );
-
-function cadenceFromArgs(args) {
-  return parseCadenceFields({
-    cadence_kind: args.cadence_kind,
-    cadence_interval: args.cadence_interval,
-    cadence_day: args.cadence_day,
-    next_date: args.next_date,
-  });
-}
 
 const TOOL_DEFINITIONS = [
   {
@@ -358,11 +349,7 @@ export function listToolDefinitions() {
   return TOOL_DEFINITIONS;
 }
 
-export function getRegisteredToolNames() {
-  return TOOL_DEFINITIONS.map((t) => t.name);
-}
-
-async function handleTool(name, args) {
+function handleTool(name, args) {
   switch (name) {
     case "get_dashboard":
       return {
@@ -501,7 +488,7 @@ async function handleTool(name, args) {
       });
     case "create_goal": {
       const auto = args.auto_amount ? dollarsToCents(args.auto_amount) : null;
-      const cadence = auto ? cadenceFromArgs(args) : null;
+      const cadence = auto ? parseCadenceFields(args) : null;
       return actions.createGoal({
         name: args.name,
         targetAmountCents: dollarsToCents(args.target_amount),
@@ -526,13 +513,13 @@ async function handleTool(name, args) {
         amountCents: dollarsToCents(args.amount),
         accountId: Number(args.account_id),
         payee: args.payee || args.name,
-        cadence: cadenceFromArgs(args),
+        cadence: parseCadenceFields(args),
       });
     case "create_allowance_rule":
       return actions.createAllowanceRule({
         envelopeId: Number(args.envelope_id),
         amountCents: dollarsToCents(args.amount),
-        cadence: cadenceFromArgs(args),
+        cadence: parseCadenceFields(args),
       });
     case "toggle_income_schedule":
       return actions.toggleIncomeSchedule({
@@ -546,22 +533,27 @@ async function handleTool(name, args) {
       return actions.toggleAllowanceRule({ ruleId: Number(args.rule_id) });
     case "delete_allowance_rule":
       return actions.deleteAllowanceRule({ ruleId: Number(args.rule_id) });
-    case "import_ofx":
-      return actions.importOfx({
-        filename: args.filename || "upload.ofx",
-        content: args.content,
-      });
+    case "import_ofx": {
+      const { results, failures } = actions.importOfxBatch([
+        {
+          filename: args.filename || "upload.ofx",
+          content: args.content,
+        },
+      ]);
+      if (failures.length) throw new Error(failures[0].message);
+      return results[0];
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
 }
 
-export async function callTool(name, args = {}) {
+export function callTool(name, args = {}) {
   try {
     maybeTick({ skip: SKIP_TICK.has(name) });
-    const result = await handleTool(name, args);
+    const result = handleTool(name, args);
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(result) }],
     };
   } catch (err) {
     return {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { CAPABILITIES } from "../src/capabilities.js";
-import { getRegisteredToolNames } from "../src/mcp/tools.js";
+import { listToolDefinitions } from "../src/mcp/tools.js";
 
 const indexSource = readFileSync(
   join(import.meta.dir, "../src/index.js"),
@@ -18,11 +18,11 @@ describe("MCP parity manifest", () => {
   });
 
   test("every manifest entry has a registered MCP tool", () => {
-    const registered = new Set(getRegisteredToolNames());
+    const registered = new Set(listToolDefinitions().map((t) => t.name));
     for (const cap of CAPABILITIES) {
       expect(registered.has(cap.mcpTool)).toBe(true);
     }
-    expect(getRegisteredToolNames().length).toBe(CAPABILITIES.length);
+    expect(listToolDefinitions().length).toBe(CAPABILITIES.length);
   });
 
   test("every write capability has a matching POST route in index.js", () => {

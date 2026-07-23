@@ -13,27 +13,22 @@ export function writeMcpMessage(stream, msg) {
   stream.write(`${JSON.stringify(msg)}\n`);
 }
 
-/**
- * Process one JSON-RPC message (stdio or tests).
- * @returns {object|null} Response body, or null for notifications.
- */
-export async function handleMcpMessage(msg, sessionId = null) {
+/** @returns {Promise<{ body?: object, sessionId?: string, notification?: boolean }>} */
+export async function handleMcpMessage(msg) {
   if (!msg || msg.jsonrpc !== "2.0") {
-    return jsonRpcError(msg?.id ?? null, INVALID_REQUEST, "Invalid Request");
+    return { body: jsonRpcError(msg?.id ?? null, INVALID_REQUEST, "Invalid Request") };
   }
 
   if (isNotification(msg)) {
-    await dispatchMcpMessage(msg, sessionId);
-    return null;
+    await dispatchMcpMessage(msg);
+    return { notification: true };
   }
 
   if (!isRequest(msg)) {
-    return jsonRpcError(msg.id ?? null, INVALID_REQUEST, "Invalid Request");
+    return { body: jsonRpcError(msg.id ?? null, INVALID_REQUEST, "Invalid Request") };
   }
 
-  const { body, notification } = await dispatchMcpMessage(msg, sessionId);
-  if (notification) return null;
-  return body;
+  return dispatchMcpMessage(msg);
 }
 
 export function runMcpStdioServer({
@@ -42,7 +37,6 @@ export function runMcpStdioServer({
   stderr = process.stderr,
 } = {}) {
   const rl = createInterface({ input: stdin, terminal: false });
-  let sessionId = null;
 
   rl.on("line", async (line) => {
     const trimmed = line.trim();
@@ -52,33 +46,19 @@ export function runMcpStdioServer({
     try {
       msg = JSON.parse(trimmed);
     } catch {
-      writeMcpMessage(
-        stdout,
-        jsonRpcError(null, PARSE_ERROR, "Parse error")
-      );
+      writeMcpMessage(stdout, jsonRpcError(null, PARSE_ERROR, "Parse error"));
       return;
     }
 
     try {
-      if (isRequest(msg) && msg.method === "initialize") {
-        const { body, sessionId: sid } = await dispatchMcpMessage(msg);
-        sessionId = sid;
-        if (body) writeMcpMessage(stdout, body);
-        return;
-      }
-
-      const response = await handleMcpMessage(msg, sessionId);
-      if (response) writeMcpMessage(stdout, response);
+      const { body } = await handleMcpMessage(msg);
+      if (body) writeMcpMessage(stdout, body);
     } catch (err) {
       stderr.write(`MCP error: ${err.message || String(err)}\n`);
       if (isRequest(msg)) {
         writeMcpMessage(
           stdout,
-          jsonRpcError(
-            msg.id,
-            INTERNAL_ERROR,
-            err.message || String(err)
-          )
+          jsonRpcError(msg.id, INTERNAL_ERROR, err.message || String(err))
         );
       }
     }

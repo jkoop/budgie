@@ -148,10 +148,6 @@ export function deleteAllowanceRule({ ruleId }) {
   return schedules.deleteAllowanceRule(ruleId);
 }
 
-export function importOfx({ filename, content }) {
-  return importOfxFile(filename, content);
-}
-
 export function importOfxBatch(files) {
   const results = [];
   const failures = [];

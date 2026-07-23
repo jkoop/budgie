@@ -12,29 +12,29 @@ beforeEach(() => {
 });
 
 describe("MCP tools", () => {
-  test("get_dashboard returns stats", async () => {
-    const result = await callTool("get_dashboard", {});
+  test("get_dashboard returns stats", () => {
+    const result = callTool("get_dashboard", {});
     expect(result.isError).toBeFalsy();
     const data = JSON.parse(result.content[0].text);
     expect(data.stats).toBeDefined();
     expect(typeof data.stats.ready).toBe("number");
   });
 
-  test("create_account and list_accounts", async () => {
-    const created = await callTool("create_account", {
+  test("create_account and list_accounts", () => {
+    const created = callTool("create_account", {
       name: "Test Chequing",
       ofx_account_id: "TEST-001",
     });
     expect(created.isError).toBeFalsy();
 
-    const listed = await callTool("list_accounts", {});
+    const listed = callTool("list_accounts", {});
     const data = JSON.parse(listed.content[0].text);
     const acct = data.accounts.find((a) => a.name === "Test Chequing");
     expect(acct).toBeDefined();
     expect(acct.ofx_account_id).toBe("TEST-001");
   });
 
-  test("assign_to_envelope moves Ready to envelope", async () => {
+  test("assign_to_envelope moves Ready to envelope", () => {
     budget.addIncome({
       account_id: accountByName("Chequing").id,
       amount: 10000,
@@ -43,7 +43,7 @@ describe("MCP tools", () => {
     });
     const env = budget.listEnvelopes().find((e) => e.name === "Groceries");
 
-    const result = await callTool("assign_to_envelope", {
+    const result = callTool("assign_to_envelope", {
       envelope_id: env.id,
       amount: "50.00",
     });
@@ -54,7 +54,7 @@ describe("MCP tools", () => {
     );
   });
 
-  test("import_ofx imports transactions", async () => {
+  test("import_ofx imports transactions", () => {
     setOfxIds({ Chequing: "CHQ-001" });
     const content = ofxFile({
       accountId: "CHQ-001",
@@ -63,14 +63,14 @@ describe("MCP tools", () => {
       ],
     });
 
-    const result = await callTool("import_ofx", { content, filename: "test.ofx" });
+    const result = callTool("import_ofx", { content, filename: "test.ofx" });
     expect(result.isError).toBeFalsy();
     const data = JSON.parse(result.content[0].text);
     expect(data.added).toBe(1);
   });
 
-  test("unknown tool returns error", async () => {
-    const result = await callTool("nonexistent_tool", {});
+  test("unknown tool returns error", () => {
+    const result = callTool("nonexistent_tool", {});
     expect(result.isError).toBe(true);
   });
 });

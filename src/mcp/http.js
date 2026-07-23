@@ -1,5 +1,4 @@
 import {
-  jsonRpcResult,
   jsonRpcError,
   PARSE_ERROR,
   INVALID_REQUEST,
@@ -7,9 +6,7 @@ import {
   isNotification,
   isRequest,
 } from "./protocol.js";
-import { dispatchMcpMessage, clearMcpSessions } from "./dispatch.js";
-
-export { clearMcpSessions };
+import { dispatchMcpMessage } from "./dispatch.js";
 
 function isAllowedOrigin(origin) {
   if (!origin) return true;
@@ -65,11 +62,9 @@ export async function handleMcpRequest(req) {
     );
   }
 
-  const sessionId = req.headers.get("mcp-session-id");
-
   try {
     if (isNotification(msg)) {
-      await dispatchMcpMessage(msg, sessionId);
+      await dispatchMcpMessage(msg);
       return new Response(null, { status: 202 });
     }
 
@@ -80,10 +75,7 @@ export async function handleMcpRequest(req) {
       );
     }
 
-    const { body, sessionId: newSid, notification } = await dispatchMcpMessage(
-      msg,
-      sessionId
-    );
+    const { body, sessionId: newSid, notification } = await dispatchMcpMessage(msg);
 
     if (notification) {
       return new Response(null, { status: 202 });

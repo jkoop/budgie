@@ -8,26 +8,18 @@ import {
 } from "./protocol.js";
 import { listToolDefinitions, callTool } from "./tools.js";
 
-const sessions = new Map();
-
-function newSessionId() {
-  return randomUUID();
-}
-
 /** @returns {{ body?: object, sessionId?: string, notification?: boolean }} */
-export async function dispatchMcpMessage(msg, sessionId = null) {
+export async function dispatchMcpMessage(msg) {
   const { method, params, id } = msg;
 
   if (method === "initialize") {
-    const sid = sessionId || newSessionId();
-    sessions.set(sid, { createdAt: Date.now() });
     return {
       body: jsonRpcResult(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: "budgie", version: "1.0.0" },
       }),
-      sessionId: sid,
+      sessionId: randomUUID(),
     };
   }
 
@@ -53,16 +45,11 @@ export async function dispatchMcpMessage(msg, sessionId = null) {
         body: jsonRpcError(id, INVALID_REQUEST, "Missing tool name"),
       };
     }
-    const result = await callTool(name, args);
+    const result = callTool(name, args);
     return { body: jsonRpcResult(id, result) };
   }
 
   return {
     body: jsonRpcError(id, METHOD_NOT_FOUND, `Method not found: ${method}`),
   };
-}
-
-/** Clear in-memory sessions (tests only). */
-export function clearMcpSessions() {
-  sessions.clear();
 }

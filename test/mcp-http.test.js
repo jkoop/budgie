@@ -1,13 +1,12 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { useCleanDb } from "./helpers.js";
+import { CAPABILITIES } from "../src/capabilities.js";
 import { handleMcpRequest } from "../src/mcp/http.js";
-import { clearMcpSessions } from "../src/mcp/dispatch.js";
 import { resetTickDebounce } from "../src/tick.js";
 
 useCleanDb();
 
 beforeEach(() => {
-  clearMcpSessions();
   resetTickDebounce();
 });
 
@@ -67,7 +66,7 @@ describe("MCP HTTP transport", () => {
       params: {},
     });
     const body = await res.json();
-    expect(body.result.tools.length).toBe(30);
+    expect(body.result.tools.length).toBe(CAPABILITIES.length);
   });
 
   test("tools/call get_dashboard", async () => {
