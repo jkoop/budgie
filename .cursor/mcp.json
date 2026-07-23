@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "budgie": {
+      "command": "bun",
+      "args": ["run", "src/mcp.js"]
+    },
+    "budgie-http": {
+      "url": "http://127.0.0.1:3000/mcp"
+    }
+  }
+}

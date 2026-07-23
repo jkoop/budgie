@@ -5,11 +5,17 @@ alwaysApply: true
 
 # Budgie core constraints
 
-Single-user envelope budgeting app. **Bun + SQLite**, zero npm deps, **no build step**, **no auth/TLS**, **no JSON API**.
+Single-user envelope budgeting app. **Bun + SQLite**, zero npm deps, **no build step**, **no auth/TLS**, **no REST/JSON web API**.
+
+**MCP** at `POST /mcp` (Streamable HTTP) is intentional — exposes the same capabilities as the GUI for AI clients. See `budgie-mcp-parity` rule. Not a public REST API.
 
 ## Architecture
 
 - `src/index.js` — inline URL routing only; thin handlers.
+- `src/actions.js` — shared mutations for GUI POST and MCP write tools.
+- `src/capabilities.js` — GUI ↔ MCP parity manifest.
+- `src/mcp/` — MCP server (`dispatch.js`, `tools.js`, `stdio.js`, `http.js`)
+- `src/mcp.js` — stdio MCP entry (`bun run src/mcp.js`).
 - `src/services/` — domain logic + SQL.
 - `src/views/` — HTML string templates (`layout.js`, `pages.js`).
 - `public/` — static CSS.
@@ -26,7 +32,7 @@ Do **not** introduce Express/Fastify routers, React/Vue, REST/JSON endpoints, we
 
 ## Side effects
 
-- Most GETs call `schedules.tick()` (debounced) and **mutate the DB**. `/ledger/rows` skips tick.
+- Most GETs call `schedules.tick()` via `maybeTick()` in `tick.js` (debounced) and **mutate the DB**. `/ledger/rows` and MCP `list_transactions` skip tick.
 - POST handlers use **PRG**: `redirect(path, { type, message })`, never render POST responses.
 
 ## Dependencies

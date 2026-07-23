@@ -70,3 +70,20 @@ SQLite file lives in `data/budgie.db` (created on first run, gitignored). Seed d
 ```bash
 bun test
 ```
+
+## MCP (AI clients)
+
+Budgie exposes MCP with tools for everything you can do in the GUI. Two transports:
+
+**stdio (recommended for Cursor)** — no web server required:
+
+```bash
+bun run mcp
+```
+
+**HTTP** — on the running web server at `POST /mcp`.
+
+**Cursor:** `.cursor/mcp.json` configures stdio by default (`budgie`). An HTTP option (`budgie-http`) is also included if you prefer connecting to a running server.
+
+No authentication — use only on trusted networks, same as the web UI.
+

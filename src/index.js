@@ -1,5 +1,5 @@
 import { migrate } from "./db.js";
-import { dollarsToCents, todayISO } from "./money.js";
+import { dollarsToCents } from "./money.js";
 import {
   html,
   isHtmx,
@@ -12,7 +12,10 @@ import {
 import * as budget from "./services/budget.js";
 import * as schedules from "./services/schedules.js";
 import * as goals from "./services/goals.js";
-import { importOfxFile, listImports } from "./services/ofx.js";
+import { listImports } from "./services/ofx.js";
+import * as actions from "./actions.js";
+import { maybeTick } from "./tick.js";
+import { handleMcpRequest } from "./mcp/http.js";
 import {
   accountsPage,
   dashboardPage,
@@ -31,8 +34,6 @@ migrate();
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
-const TICK_MIN_INTERVAL_MS = 2000;
-let lastTickAt = 0;
 
 function ledgerTxnRowHtmxResponse(txnId) {
   const txn = budget.getLedgerTransaction(txnId);
@@ -69,7 +70,7 @@ function ledgerTransferLinkHtmxOrRedirect(req, txnId, otherTxnId, flash) {
   return redirect(req.headers.get("referer") || "/ledger", flash);
 }
 
-async function handle(req) {
+export async function handle(req) {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method.toUpperCase();
@@ -82,17 +83,14 @@ async function handle(req) {
     return new Response(file);
   }
 
-  // Skip HTMX ledger chunks; debounce rapid full-page hits.
-  if (path !== "/ledger/rows") {
-    const now = Date.now();
-    if (now - lastTickAt >= TICK_MIN_INTERVAL_MS) {
-      lastTickAt = now;
-      try {
-        schedules.tick(todayISO());
-      } catch (err) {
-        console.error("schedule tick failed:", err);
-      }
-    }
+  if (path === "/mcp") {
+    return handleMcpRequest(req);
+  }
+
+  try {
+    maybeTick({ skip: path === "/ledger/rows" });
+  } catch (err) {
+    console.error("schedule tick failed:", err);
   }
 
   const { flash, clearHeader } = readFlash(req);
@@ -237,11 +235,11 @@ async function handle(req) {
         const target = data.target_amount
           ? dollarsToCents(data.target_amount)
           : null;
-        budget.createEnvelope({
+        actions.createEnvelope({
           name: data.name,
-          group_id: data.group_id ? Number(data.group_id) : null,
-          target_amount: target || null,
-          target_date: data.target_date || null,
+          groupId: data.group_id ? Number(data.group_id) : null,
+          targetAmountCents: target || null,
+          targetDate: data.target_date || null,
         });
         return redirect("/envelopes", {
           type: "success",
@@ -250,7 +248,7 @@ async function handle(req) {
       }
 
       if (path === "/envelope-groups") {
-        budget.createGroup(data.name);
+        actions.createEnvelopeGroup({ name: data.name });
         return redirect("/envelopes", {
           type: "success",
           message: "Group created",
@@ -258,8 +256,10 @@ async function handle(req) {
       }
 
       if (path === "/envelopes/assign") {
-        const amount = dollarsToCents(data.amount);
-        budget.assignToEnvelope(Number(data.envelope_id), amount);
+        actions.assignToEnvelope({
+          envelopeId: Number(data.envelope_id),
+          amountCents: dollarsToCents(data.amount),
+        });
         const dest = req.headers.get("referer")?.includes("/envelopes")
           ? "/envelopes"
           : "/";
@@ -270,11 +270,11 @@ async function handle(req) {
       }
 
       if (path === "/envelopes/move") {
-        budget.moveBetweenEnvelopes(
-          Number(data.from_id),
-          Number(data.to_id),
-          dollarsToCents(data.amount)
-        );
+        actions.moveBetweenEnvelopes({
+          fromId: Number(data.from_id),
+          toId: Number(data.to_id),
+          amountCents: dollarsToCents(data.amount),
+        });
         return redirect("/envelopes", {
           type: "success",
           message: "Moved between envelopes",
@@ -282,7 +282,7 @@ async function handle(req) {
       }
 
       if (path === "/envelopes/cover") {
-        budget.coverOverspend(Number(data.envelope_id));
+        actions.coverOverspend({ envelopeId: Number(data.envelope_id) });
         return redirect("/envelopes", {
           type: "success",
           message: "Covered overspend from Ready",
@@ -292,11 +292,13 @@ async function handle(req) {
       const envUpdate = path.match(/^\/envelopes\/(\d+)\/update$/);
       if (envUpdate) {
         const targetRaw = (data.target_amount || "").trim();
-        budget.updateEnvelope(Number(envUpdate[1]), {
+        actions.updateEnvelope({
+          id: Number(envUpdate[1]),
           name: data.name,
-          group_id: data.group_id ? Number(data.group_id) : null,
-          target_amount: targetRaw === "" ? null : dollarsToCents(targetRaw),
-          target_date: data.target_date || null,
+          groupId: data.group_id ? Number(data.group_id) : null,
+          targetAmountCents:
+            targetRaw === "" ? null : dollarsToCents(targetRaw),
+          targetDate: data.target_date || null,
           archived: data.archived === "1",
         });
         return redirect("/envelopes", {
@@ -307,7 +309,10 @@ async function handle(req) {
 
       // Accounts
       if (path === "/accounts") {
-        budget.createAccount(data.name, data.ofx_account_id || null);
+        actions.createAccount({
+          name: data.name,
+          ofxAccountId: data.ofx_account_id || null,
+        });
         return redirect("/accounts", {
           type: "success",
           message: "Account created",
@@ -316,9 +321,10 @@ async function handle(req) {
 
       const acctUpdate = path.match(/^\/accounts\/(\d+)\/update$/);
       if (acctUpdate) {
-        budget.updateAccount(Number(acctUpdate[1]), {
+        actions.updateAccount({
+          id: Number(acctUpdate[1]),
           name: data.name,
-          ofx_account_id: data.ofx_account_id,
+          ofxAccountId: data.ofx_account_id,
           archived: data.archived === "1",
         });
         return redirect("/accounts", {
@@ -331,7 +337,10 @@ async function handle(req) {
       const categorize = path.match(/^\/ledger\/(\d+)\/categorize$/);
       if (categorize) {
         const txnId = Number(categorize[1]);
-        budget.categorizeTransaction(txnId, Number(data.envelope_id));
+        actions.categorizeTransaction({
+          transactionId: txnId,
+          envelopeId: Number(data.envelope_id),
+        });
         return ledgerTxnRowHtmxOrRedirect(req, txnId, {
           type: "success",
           message: "Categorized",
@@ -342,7 +351,10 @@ async function handle(req) {
       if (linkXfer) {
         const txnId = Number(linkXfer[1]);
         const otherTxnId = Number(data.other_id);
-        budget.linkTransactionsAsTransfer(txnId, otherTxnId);
+        actions.linkTransfer({
+          transactionId: txnId,
+          otherTransactionId: otherTxnId,
+        });
         return ledgerTransferLinkHtmxOrRedirect(req, txnId, otherTxnId, {
           type: "success",
           message: "Linked as transfer",
@@ -351,7 +363,7 @@ async function handle(req) {
 
       const delTxn = path.match(/^\/ledger\/(\d+)\/delete$/);
       if (delTxn) {
-        budget.deleteTransaction(Number(delTxn[1]));
+        actions.deleteTransaction({ transactionId: Number(delTxn[1]) });
         return redirect("/ledger", {
           type: "success",
           message: "Transaction deleted",
@@ -361,19 +373,16 @@ async function handle(req) {
       // Goals
       if (path === "/goals") {
         const auto = data.auto_amount ? dollarsToCents(data.auto_amount) : null;
-        const cadence = auto ? parseCadenceFields(data) : {};
-        goals.createGoal({
+        const cadence = auto ? parseCadenceFields(data) : null;
+        actions.createGoal({
           name: data.name,
-          target_amount: dollarsToCents(data.target_amount),
-          target_date: data.target_date || null,
-          source_envelope_id: data.source_envelope_id
+          targetAmountCents: dollarsToCents(data.target_amount),
+          targetDate: data.target_date || null,
+          sourceEnvelopeId: data.source_envelope_id
             ? Number(data.source_envelope_id)
             : null,
-          auto_amount: auto,
-          cadence_kind: auto ? cadence.cadence_kind : null,
-          cadence_interval: auto ? cadence.cadence_interval : null,
-          cadence_day: auto ? cadence.cadence_day : null,
-          next_date: auto ? cadence.next_date : null,
+          autoAmountCents: auto,
+          cadence,
         });
         return redirect("/goals", {
           type: "success",
@@ -383,7 +392,10 @@ async function handle(req) {
 
       const fundGoal = path.match(/^\/goals\/(\d+)\/fund$/);
       if (fundGoal) {
-        goals.fundGoal(Number(fundGoal[1]), dollarsToCents(data.amount));
+        actions.fundGoal({
+          goalId: Number(fundGoal[1]),
+          amountCents: dollarsToCents(data.amount),
+        });
         return redirect("/goals", {
           type: "success",
           message: "Goal funded",
@@ -392,7 +404,7 @@ async function handle(req) {
 
       const delGoal = path.match(/^\/goals\/(\d+)\/delete$/);
       if (delGoal) {
-        goals.deleteGoal(Number(delGoal[1]));
+        actions.deleteGoal({ goalId: Number(delGoal[1]) });
         return redirect("/goals", {
           type: "success",
           message: "Goal deleted",
@@ -401,12 +413,12 @@ async function handle(req) {
 
       // Schedules
       if (path === "/schedules/income") {
-        schedules.createIncomeSchedule({
+        actions.createIncomeSchedule({
           name: data.name,
-          amount: dollarsToCents(data.amount),
-          account_id: Number(data.account_id),
+          amountCents: dollarsToCents(data.amount),
+          accountId: Number(data.account_id),
           payee: data.payee || data.name,
-          ...parseCadenceFields(data),
+          cadence: parseCadenceFields(data),
         });
         return redirect("/schedules", {
           type: "success",
@@ -415,10 +427,10 @@ async function handle(req) {
       }
 
       if (path === "/schedules/allowance") {
-        schedules.createAllowanceRule({
-          envelope_id: Number(data.envelope_id),
-          amount: dollarsToCents(data.amount),
-          ...parseCadenceFields(data),
+        actions.createAllowanceRule({
+          envelopeId: Number(data.envelope_id),
+          amountCents: dollarsToCents(data.amount),
+          cadence: parseCadenceFields(data),
         });
         return redirect("/schedules", {
           type: "success",
@@ -428,13 +440,13 @@ async function handle(req) {
 
       const incToggle = path.match(/^\/schedules\/income\/(\d+)\/toggle$/);
       if (incToggle) {
-        schedules.toggleIncomeSchedule(Number(incToggle[1]));
+        actions.toggleIncomeSchedule({ scheduleId: Number(incToggle[1]) });
         return redirect("/schedules");
       }
 
       const incDel = path.match(/^\/schedules\/income\/(\d+)\/delete$/);
       if (incDel) {
-        schedules.deleteIncomeSchedule(Number(incDel[1]));
+        actions.deleteIncomeSchedule({ scheduleId: Number(incDel[1]) });
         return redirect("/schedules", {
           type: "success",
           message: "Income schedule deleted",
@@ -443,13 +455,13 @@ async function handle(req) {
 
       const allToggle = path.match(/^\/schedules\/allowance\/(\d+)\/toggle$/);
       if (allToggle) {
-        schedules.toggleAllowanceRule(Number(allToggle[1]));
+        actions.toggleAllowanceRule({ ruleId: Number(allToggle[1]) });
         return redirect("/schedules");
       }
 
       const allDel = path.match(/^\/schedules\/allowance\/(\d+)\/delete$/);
       if (allDel) {
-        schedules.deleteAllowanceRule(Number(allDel[1]));
+        actions.deleteAllowanceRule({ ruleId: Number(allDel[1]) });
         return redirect("/schedules", {
           type: "success",
           message: "Allowance deleted",
@@ -461,17 +473,14 @@ async function handle(req) {
         const uploads = (files || []).filter((f) => f && (f.size > 0 || f.name));
         if (!uploads.length) throw new Error("No file uploaded");
 
-        const results = [];
-        const failures = [];
+        const filePayloads = [];
         for (const upload of uploads) {
-          const name = upload.name || "upload.ofx";
-          try {
-            const text = await upload.text();
-            results.push(importOfxFile(name, text));
-          } catch (err) {
-            failures.push({ name, message: err.message || String(err) });
-          }
+          filePayloads.push({
+            filename: upload.name || "upload.ofx",
+            content: await upload.text(),
+          });
         }
+        const { results, failures } = actions.importOfxBatch(filePayloads);
 
         const added = results.reduce((s, r) => s + r.added, 0);
         const skipped = results.reduce((s, r) => s + r.skipped, 0);
@@ -531,10 +540,13 @@ async function handle(req) {
   }
 }
 
-const server = Bun.serve({
-  hostname: HOST,
-  port: PORT,
-  fetch: handle,
-});
+if (import.meta.main) {
+  const server = Bun.serve({
+    hostname: HOST,
+    port: PORT,
+    fetch: handle,
+  });
 
-console.log(`Budgie running at http://${HOST}:${server.port}`);
+  console.log(`Budgie running at http://${HOST}:${server.port}`);
+  console.log(`MCP endpoint at http://${HOST}:${server.port}/mcp`);
+}

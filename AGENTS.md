@@ -7,6 +7,11 @@ Single-user YNAB-style envelope budgeting. Bun + SQLite, zero npm deps, no build
 | Path | Role |
 |------|------|
 | `src/index.js` | Entry: `migrate()`, Bun server, **all routes inline** |
+| `src/actions.js` | Shared write mutations for GUI POST and MCP tools |
+| `src/capabilities.js` | GUI ↔ MCP parity manifest |
+| `src/mcp/` | MCP dispatch, tools, stdio + HTTP transports |
+| `src/mcp.js` | stdio MCP entry (`bun run src/mcp.js`) |
+| `src/tick.js` | Debounced `maybeTick()` for schedule side effects |
 | `src/http.js` | Flash cookies, 303 redirects, body parsing, static files |
 | `src/db.js` | SQLite open/migrate/seed, `ready_to_assign`, `resetDatabase()` |
 | `src/migrations.js` | Versioned schema migrations (`PRAGMA user_version`) |
@@ -17,12 +22,12 @@ Single-user YNAB-style envelope budgeting. Bun + SQLite, zero npm deps, no build
 | `test/` | Bun tests; `preload.js` points `BUDGIE_DB` at a temp file |
 | `data/` | Host SQLite (`budgie.db`, gitignored) |
 
-**Layers:** `index.js` matches URLs → services mutate DB → views render HTML. No JSON API. No separate router package.
+**Layers:** `index.js` matches URLs → `actions.js` / services mutate DB → views render HTML. MCP at `/mcp` calls the same `actions.js` and services. No REST JSON API. No separate router package.
 
 ## Request flow
 
 1. `GET /public/*` → static file (path-traversal guarded).
-2. Most requests call `schedules.tick(todayISO())` (debounced 2s; **skipped** for `/ledger/rows`).
+2. Most requests call `maybeTick()` from `tick.js` (debounced 2s; **skipped** for `/ledger/rows` and MCP `list_transactions`).
 3. Read flash cookie → GET renders page, or POST runs action then `redirect(303)` with flash.
 4. Thrown errors become error-flash redirects (not 4xx/5xx HTML).
 
@@ -100,9 +105,10 @@ Schema is versioned with SQLite **`PRAGMA user_version`** (not a custom table).
 
 1. Add a numbered migration in `src/migrations.js` (`up` runs once per DB; bump `version` sequentially). Seed/default rows stay in `seed()` in `db.js`.
 2. Logic in the right service (keep SQL out of `index.js` / views).
-3. Route + `dollarsToCents` / flash redirect in `index.js`.
+3. Route + `dollarsToCents` / flash redirect in `index.js`; mutation in `actions.js`.
 4. Page/partial in `views/pages.js`; nav key in `layout.js` if needed.
-5. Tests next to existing suites; call `useCleanDb()` for DB tests.
+5. MCP: add entry to `capabilities.js`, tool in `mcp/tools.js` (see `budgie-mcp-parity` rule).
+6. Tests next to existing suites; call `useCleanDb()` for DB tests; run `bun test test/mcp-parity.test.js`.
 
 ## Tests
 
@@ -139,3 +145,16 @@ OFX fixtures use **cents** in `ofxFile({ amount: -1234 })` → TRNAMT `-12.34`. 
 7. **No multi-user / auth** — never invent tenancy or sessions.
 8. **`.dockerignore` excludes `test/`** — image is runtime-only.
 9. **Migrations vs seeds** — schema changes go in `src/migrations.js`; default rows stay in `seed()`. Never rely on re-running migration `up` to fix missing seed data.
+10. **GUI ↔ MCP parity** — every GUI action needs a matching MCP tool; see `src/capabilities.js` and `.cursor/rules/budgie-mcp-parity.mdc`.
+
+## MCP
+
+Two transports expose the same 30 tools:
+
+| Transport | How | Notes |
+|-----------|-----|-------|
+| **stdio** | `bun run src/mcp.js` | Cursor default in `.cursor/mcp.json`; no web server needed |
+| **HTTP** | `POST /mcp` | Requires `bun start`; URL in `.cursor/mcp.json` as `budgie-http` |
+
+- **Shared mutations** — `src/actions.js` used by GUI POST, MCP tools
+- **Parity test** — `bun test test/mcp-parity.test.js`

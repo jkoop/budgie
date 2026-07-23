@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun run src/index.js",
     "dev": "bun --watch run src/index.js",
+    "mcp": "bun run src/mcp.js",
     "test": "bun test"
   },
   "devDependencies": {},

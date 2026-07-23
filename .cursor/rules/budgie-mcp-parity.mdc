@@ -1,0 +1,58 @@
+---
+description: GUI ↔ MCP capability parity — keep HTML UI and MCP tools in sync
+globs: src/index.js,src/actions.js,src/capabilities.js,src/mcp/**
+alwaysApply: false
+---
+
+# GUI ↔ MCP parity
+
+Budgie exposes the same user-facing capabilities through the **HTML GUI** and **MCP tools**. Both must stay in sync.
+
+## Manifest
+
+[`src/capabilities.js`](src/capabilities.js) is the single source of truth. Every capability has:
+
+- `id` — stable identifier
+- `kind` — `"read"` or `"write"`
+- `gui` — `{ method, path }` matching the route in `index.js`
+- `mcpTool` — tool name in `src/mcp/tools.js`
+- `skipTick` (optional) — only `list_transactions` skips schedule tick
+
+## Adding a feature
+
+When adding any user-facing action:
+
+1. Add an entry to `src/capabilities.js`
+2. Add mutation logic to `src/actions.js` (writes)
+3. Add HTTP route in `src/index.js` (GUI)
+4. Add MCP tool definition + handler in `src/mcp/tools.js`
+5. Run `bun test test/mcp-parity.test.js`
+
+## Rules
+
+- **No GUI-only mutations** — every `POST` route must have a matching MCP write tool
+- **No MCP-only mutations** — do not expose service functions via MCP unless the GUI also exposes them
+- **Shared write path** — HTTP POST handlers call `actions.*`; MCP tools call the same functions
+- **Money at boundary** — `dollarsToCents()` in HTTP/MCP layers only; services use integer cents
+- **Cadence** — use `parseCadenceFields()` (HTTP) or equivalent JSON args (MCP)
+- **Schedule tick** — `maybeTick()` on HTTP page loads (skip `/ledger/rows`); MCP calls `maybeTick()` before every tool except `list_transactions`
+- **Bank transactions** — enter only via OFX/QFX import (GUI upload or `import_ofx` tool)
+
+## Excluded (internal only)
+
+Do not expose via GUI or MCP:
+
+- Manual transaction entry (`addIncome` / `addExpense` except via import/schedules)
+- Schedule `update*` functions (create/toggle/delete only in GUI)
+- Direct `transferAccounts` (import and transfer linking handle this)
+
+## Transport
+
+Two MCP transports share the same tools and dispatch logic (`src/mcp/dispatch.js`):
+
+| Transport | Entry | When to use |
+|-----------|-------|-------------|
+| **stdio** | `bun run src/mcp.js` | Cursor default; no web server required |
+| **Streamable HTTP** | `POST /mcp` on the Bun web server | Remote clients or when Budgie is already running |
+
+No auth — same trust model as the web app (localhost/LAN). This is **not** a public REST JSON API.
